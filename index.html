@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+<title>Kettlebell Workouts</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0f172a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Kettlebell" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body data-screen="setup">
+
+<!-- ============ SETUP SCREEN ============ -->
+<section id="screen-setup" class="screen active">
+  <header class="app-header">
+    <div class="brand"><span class="bell-dot"></span>Kettlebell Workouts</div>
+    <button id="btn-sound-toggle" class="icon-btn" title="Sound on/off" aria-label="Toggle sound">🔔</button>
+  </header>
+
+  <div class="setup-body">
+    <h2 class="section-title">Muscle group</h2>
+    <div id="group-grid" class="chip-grid"></div>
+
+    <h2 class="section-title">Duration</h2>
+    <div id="duration-chips" class="chip-row"></div>
+
+    <div class="dual-row">
+      <div>
+        <h2 class="section-title small">Work (sec)</h2>
+        <div id="work-chips" class="chip-row small"></div>
+      </div>
+      <div>
+        <h2 class="section-title small">Rest (sec)</h2>
+        <div id="rest-chips" class="chip-row small"></div>
+      </div>
+    </div>
+
+    <h2 class="section-title">Difficulty</h2>
+    <div id="level-chips" class="chip-row small"></div>
+
+    <div id="workout-summary" class="summary-card">…</div>
+
+    <button id="btn-start" class="start-btn">Start Workout</button>
+  </div>
+</section>
+
+<!-- ============ WORKOUT SCREEN ============ -->
+<section id="screen-workout" class="screen workout-screen">
+  <div class="workout-top">
+    <button id="btn-stop" class="icon-btn stop-btn" title="Stop workout" aria-label="Stop">✕</button>
+    <div class="progress-wrap"><div id="session-progress"></div></div>
+    <span id="time-remaining" class="clock-small">0:00</span>
+  </div>
+
+  <div id="phase-banner" class="phase-banner work">WORK</div>
+
+  <div id="big-countdown" class="countdown">--</div>
+
+  <div id="exercise-card" class="exercise-card">
+    <div class="exercise-meta">
+      <span id="ex-index" class="ex-index"></span>
+      <span id="kb-weight-chip" class="weight-chip"></span>
+    </div>
+    <h1 id="ex-name" class="ex-name">—</h1>
+    <p id="ex-cue" class="ex-cue"></p>
+  </div>
+
+  <div id="exercise-art" class="exercise-art"></div>
+
+  <div id="next-card" class="next-card">
+    <span class="next-label">Next</span>
+    <span id="next-name"></span>
+    <div id="next-art" class="next-art"></div>
+  </div>
+
+  <div class="workout-controls">
+    <button id="btn-pause" class="ctrl-btn primary">Pause</button>
+    <button id="btn-mute-workout" class="ctrl-btn">Mute</button>
+  </div>
+</section>
+
+<!-- ============ HISTORY SCREEN ============ -->
+<section id="screen-history" class="screen">
+  <header class="app-header"><h1 class="brand-title">History</h1></header>
+  <div id="history-stats" class="history-stats"></div>
+  <ul id="history-list" class="history-list"></ul>
+  <button id="btn-clear-history" class="danger-link">Clear history</button>
+</section>
+
+<!-- ============ SETTINGS SCREEN ============ -->
+<section id="screen-settings" class="screen">
+  <header class="app-header"><h1 class="brand-title">Settings</h1></header>
+  <div class="setup-body">
+    <h2 class="section-title">Kettlebell weight (lb)</h2>
+    <div id="weight-chips" class="chip-row"></div>
+
+    <h2 class="section-title">Options</h2>
+    <label class="toggle-row"><span>Bell sound on transitions</span><input type="checkbox" id="opt-sound" /></label>
+    <label class="toggle-row"><span>Haptic buzz (if supported)</span><input type="checkbox" id="opt-haptics" /></label>
+
+    <p class="fine-print">Tip: for the best experience, tap your phone's browser menu → “Add to Home Screen” so it opens fullscreen and works offline in the gym.</p>
+  </div>
+</section>
+
+<!-- ============ TAB BAR ============ -->
+<nav id="tabbar">
+  <button data-tab="setup" class="active"><span>⏱</span><small>Workout</small></button>
+  <button data-tab="history"><span>📋</span><small>History</small></button>
+  <button data-tab="settings"><span>⚙️</span><small>Gear</small></button>
+</nav>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{})); }</script>
+</body>
+</html>
