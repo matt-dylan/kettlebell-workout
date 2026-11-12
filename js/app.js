@@ -22,6 +22,11 @@ function shuffle(arr) {
 const GROUND = 164, HEAD_R = 9, KB_R = 13;
 const INK = '#f8fafc', AMBER = '#fbbf24', CYAN = '#38bdf8';
 
+function asLimbs(v) { // accept both [[x,y,...]] (v2) and [x,y,...] (v3 bare flat) limb lists
+  if (!v || !v.length) return [];
+  return Array.isArray(v[0]) ? v : [v];
+}
+
 function limb(pts) { // pts: flat [x1,y1,x2,y2,(x3,y3)] joint coordinates
   let d = '';
   for (let i = 0; i + 1 < pts.length; i += 2) d += (d ? ' L ' : 'M ') + pts[i] + ' ' + pts[i + 1];
@@ -53,15 +58,15 @@ function kbSvg(x, y) {
 function personSvg(p) {
   const g = [];
   // back limbs (lighter)
-  (p.legsB || []).forEach((l) => g.push(`<path d="${limb(l)}" stroke="${INK}" stroke-opacity=".38" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
-  (p.armsB || []).forEach((a) => g.push(`<path d="${limb(a)}" stroke="${INK}" stroke-opacity=".38" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
+  asLimbs(p.legsB).forEach((l) => g.push(`<path d="${limb(l)}" stroke="${INK}" stroke-opacity=".38" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
+  asLimbs(p.armsB).forEach((a) => g.push(`<path d="${limb(a)}" stroke="${INK}" stroke-opacity=".38" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
   // spine + head
   const s = p.spine;
   g.push(`<line x1="${s[0][0]}" y1="${s[0][1]}" x2="${s[1][0]}" y2="${s[1][1]}" stroke="${INK}" stroke-width="6" stroke-linecap="round"/>`);
   g.push(`<circle cx="${p.head[0]}" cy="${p.head[1]}" r="${HEAD_R}" fill="${INK}"/>`);
   // front limbs
-  (p.legsF || []).forEach((l) => g.push(`<path d="${limb(l)}" stroke="${INK}" stroke-width="5.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
-  (p.armsF || []).forEach((a) => g.push(`<path d="${limb(a)}" stroke="${INK}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
+  asLimbs(p.legsF).forEach((l) => g.push(`<path d="${limb(l)}" stroke="${INK}" stroke-width="5.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
+  asLimbs(p.armsF).forEach((a) => g.push(`<path d="${limb(a)}" stroke="${INK}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
   return g.join('');
 }
 function renderPose(frame, ex) {
@@ -80,11 +85,15 @@ function renderPose(frame, ex) {
 // ---------------- pose animation (keyframe morphing) ----------------
 function lerpPose(A, B, u) {
   const L = (p1, p2) => [p1[0] + (p2[0] - p1[0]) * u, p1[1] + (p2[1] - p1[1]) * u];
-  const limbL = (a, b) => a.map((limbPts, li) => { // flat joint coords, lerp by index
-    const out = [];
-    for (let i = 0; i < limbPts.length && i < b[li].length; i++) out.push(limbPts[i] + (b[li][i] - limbPts[i]) * u);
-    return out;
-  });
+  const limbL = (a, b) => { // flat joint coords, lerp by index; accepts nested or bare-flat lists
+    const A = asLimbs(a), B = asLimbs(b);
+    return A.map((limbPts, li) => {
+      const src = B[li] || limbPts;
+      const out = [];
+      for (let i = 0; i < limbPts.length && i < src.length; i++) out.push(limbPts[i] + (src[i] - limbPts[i]) * u);
+      return out;
+    });
+  };
   return {
     head: L(A.head, B.head),
     spine: [L(A.spine[0], B.spine[0]), L(A.spine[1], B.spine[1])],
@@ -144,7 +153,7 @@ function chime(kind) {
     if (kind === 'ready') bell(660, 0, 0.28, 0.3);
     else if (kind === 'work') { bell(880, 0, 0.7, 0.5); bell(1174.7, 0.13, 0.9, 0.45); }
     else if (kind === 'rest') bell(392, 0, 1.15, 0.5);
-    else if (kind === 'finish') [523.3, 659.3, 784, 1046.5].forEach((f, i) => bell(f, i * 0.16, 0.8, 0.45));
+    else if (kind === 'finish') bell(784, 0, 2.4, 0.6); // one long, clear "done" tone
     else if (kind === 'stop') bell(330, 0, 0.5, 0.35);
     else if (kind === 'count') bell(987.8, 0, 0.14, 0.42);   // final-3-seconds beep
     else if (kind === 'tick') bell(660, 0, 0.1, 0.3);         // EMOM :30 / :15 tick
@@ -154,66 +163,11 @@ function chime(kind) {
 }
 function buzz(pattern) { if (settings.haptics && navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) {} } }
 
-// ---------------- workout beat (synthesized, no audio files) ----------------
-const music = { timer: null, nextTime: 0, step: 0, noiseBuf: null };
-function musicNoise(ctx) {
-  if (!music.noiseBuf) {
-    const len = Math.floor(ctx.sampleRate * 0.2);
-    music.noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d = music.noiseBuf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-  }
-  return music.noiseBuf;
-}
-function mKick(ctx, t) {
-  const o = ctx.createOscillator(), g = ctx.createGain();
-  o.type = 'sine';
-  o.frequency.setValueAtTime(150, t);
-  o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
-  g.gain.setValueAtTime(0.5, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.22);
-}
-function mHat(ctx, t, vol) {
-  const s = ctx.createBufferSource(); s.buffer = musicNoise(ctx);
-  const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 6500;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(vol * 0.2, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-  s.connect(f).connect(g).connect(ctx.destination); s.start(t); s.stop(t + 0.06);
-}
-function mBass(ctx, t, fq) {
-  const o = ctx.createOscillator(), g = ctx.createGain();
-  o.type = 'triangle'; o.frequency.value = fq;
-  g.gain.setValueAtTime(0.13, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
-  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.34);
-}
-const BASSLINE = [55, 65.41, 49, 73.42]; // A1 C2 G1 D2, one per bar
-function musicStep(step, t) {
-  const s = step % 16;
-  if (s % 4 === 0) mKick(audio(), t);                 // four-on-the-floor @ 128 BPM
-  mHat(audio(), t, s % 2 ? 0.9 : 0.5);                // offbeat hats
-  if (s === 0 || s === 8) mBass(audio(), t, BASSLINE[Math.floor(step / 16) % 4]);
-}
-function musicStart() {
-  if (music.timer) return;
-  const ctx = audio();
-  music.nextTime = ctx.currentTime + 0.06; music.step = 0;
-  music.timer = setInterval(() => {
-    while (music.nextTime < audio().currentTime + 0.15) {
-      musicStep(music.step, music.nextTime);
-      music.step++; music.nextTime += 60 / 128 / 2; // eighth notes at 128 BPM
-    }
-  }, 40);
-}
-function musicStop() { if (music.timer) { clearInterval(music.timer); music.timer = null; } }
-
 // ---------------- settings & history ----------------
 const LS_SET = 'kb.settings.v1', LS_HIST = 'kb.history.v1';
 function loadLS(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
 let settings = Object.assign(
-  { weightLb: 35, sound: true, haptics: true, group: 'full', durationMin: 30, workSec: 40, restSec: 20, level: 0, mode: 'interval', music: false },
+  { weightLb: 35, sound: true, haptics: true, group: 'full', durationMin: 30, workSec: 40, restSec: 20, level: 0, mode: 'interval' },
   loadLS(LS_SET) || {}
 );
 let history = Array.isArray(loadLS(LS_HIST)) ? loadLS(LS_HIST) : [];
@@ -320,8 +274,7 @@ function startWorkout() {
   showScreen('screen-workout');
   acquireWake();
   advanceTo(0, Date.now());
-  if (settings.music) musicStart();
-  }
+}
 
 function advanceTo(i, now) {
   W.idx = i;
@@ -469,7 +422,6 @@ function finishWorkout(completed) {
     completed: !!completed
   };
   history.unshift(entry); saveHistory();
-  musicStop();
   chime(completed ? 'finish' : 'stop');
   W = null;
   document.title = 'Kettlebell Workouts';
@@ -616,15 +568,6 @@ function buildSetup() {
   os.addEventListener('change', () => { settings.sound = os.checked; saveSettings(); syncSoundUI(); });
   oh.addEventListener('change', () => { settings.haptics = oh.checked; saveSettings(); });
 
-  // workout beat (synthesized) — settings toggle + in-workout button
-  const om = $('#opt-music');
-  if (om) {
-    om.checked = !!settings.music;
-    om.addEventListener('change', () => { settings.music = om.checked; saveSettings(); syncSoundUI(); if (W) { if (settings.music) musicStart(); else musicStop(); } });
-  }
-  const mBtn2 = $('#btn-music');
-  if (mBtn2) mBtn2.addEventListener('click', () => { settings.music = !settings.music; saveSettings(); syncSoundUI(); if (W) { if (settings.music) musicStart(); else musicStop(); } });
-
   const libBtn = document.createElement('button');
   libBtn.textContent = '📖 View all exercises (' + EXERCISES.length + ')';
   libBtn.style.cssText = 'width:100%;margin-top:20px;padding:14px;border-radius:12px;background:#1e293b;color:#f8fafc;font-size:15px;font-weight:700;border:none;cursor:pointer';
@@ -646,8 +589,6 @@ function syncSoundUI() {
   $('#opt-sound').checked = !!settings.sound;
   const mb = $('#btn-mute-workout');
   if (mb) mb.textContent = settings.sound ? 'Mute' : 'Unmute';
-  const mBtn = $('#btn-music');
-  if (mBtn) { mBtn.textContent = settings.music ? '♪ On' : '♪ Off'; mBtn.classList.toggle('active', !!settings.music); }
 }
 
 function refreshSummary() {

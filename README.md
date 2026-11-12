@@ -13,9 +13,8 @@ An installable PWA for auto-run, randomized kettlebell interval workouts. Pick a
 - **Total duration:** 15 / 20 / 30 / 40 min or any custom length — the app calculates how many exercises fit
 - **Work & rest intervals:** selectable on/off seconds; leftover time is added to a final "finisher" push so you finish exactly on time
 - **Fully automated:** get-ready countdown → work → rest → next, all hands-free until done
-- **Sound cues (Web Audio):** bright ding-ding when work starts, low bong for rest, **beeps at 3…2…1** before every transition (+ :30/:15 ticks in EMOM), fanfare at the end — no audio files needed; mute toggle included
-- **Optional workout beat:** a synthesized 128 BPM kick/hat/bass pulse you can switch on mid-workout (off by default)
-- **Animated exercise figures:** every move is a hand-built vector figure with two or more keyframes that the app morphs between while you work, plus motion arrows and a coaching cue. One-arm moves show a big **L / R** badge — and the other side always follows immediately so both arms get worked.
+- **Sound cues (Web Audio):** bright ding-ding when work starts, low bong for rest, **beeps at 3…2…1** before every transition (+ :30/:15 ticks in EMOM), one long steady beep when the workout is done — no audio files needed; mute toggle included
+- **Animated exercise figures:** every move is a hand-built vector figure with two or three keyframes that the app morphs between while you work, plus motion arrows and a coaching cue. One-arm moves show a big **L / R** badge — and the other side always follows immediately so both arms get worked.
 - **"Up next" during rest:** the whole exercise card switches to your *next* move (name, figure, L/R) on every rest period so you can set up before the bell rings; a small "Next" preview stays visible during work blocks too
 - **Always different:** exercises are dealt from a shuffled deck each session (no repeats until the whole pool cycles)
 - **Difficulty filter:** All / Beginner / Intermediate / Advanced
@@ -24,7 +23,7 @@ An installable PWA for auto-run, randomized kettlebell interval workouts. Pick a
 - **Offline-first:** service worker caches everything — works in the gym with no signal
 - **Kettlebell weight** shown on-screen and selectable in settings
 
-![all exercises](docs/exercises-contact.svg.png)
+![all exercises](docs/exercises-contact-v3.svg.png)
 
 ## Run it locally
 
