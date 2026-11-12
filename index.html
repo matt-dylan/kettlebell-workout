@@ -27,10 +27,13 @@
     <h2 class="section-title">Muscle group</h2>
     <div id="group-grid" class="chip-grid"></div>
 
+    <h2 class="section-title">Mode</h2>
+    <div id="mode-chips" class="chip-row small"></div>
+
     <h2 class="section-title">Duration</h2>
     <div id="duration-chips" class="chip-row"></div>
 
-    <div class="dual-row">
+    <div class="dual-row" id="interval-row">
       <div>
         <h2 class="section-title small">Work (sec)</h2>
         <div id="work-chips" class="chip-row small"></div>
@@ -65,13 +68,17 @@
   <div id="exercise-card" class="exercise-card">
     <div class="exercise-meta">
       <span id="ex-index" class="ex-index"></span>
+      <span id="ex-side" class="side-badge" style="display:none"></span>
       <span id="kb-weight-chip" class="weight-chip"></span>
     </div>
     <h1 id="ex-name" class="ex-name">—</h1>
     <p id="ex-cue" class="ex-cue"></p>
   </div>
 
-  <div id="exercise-art" class="exercise-art"></div>
+  <div class="art-zone">
+    <div id="side-letter"></div>
+    <div id="exercise-art" class="exercise-art"></div>
+  </div>
 
   <div id="next-card" class="next-card">
     <span class="next-label">Next</span>
@@ -81,6 +88,7 @@
 
   <div class="workout-controls">
     <button id="btn-pause" class="ctrl-btn primary">Pause</button>
+    <button id="btn-music" class="ctrl-btn">♪ Off</button>
     <button id="btn-mute-workout" class="ctrl-btn">Mute</button>
   </div>
 </section>
@@ -103,6 +111,7 @@
     <h2 class="section-title">Options</h2>
     <label class="toggle-row"><span>Bell sound on transitions</span><input type="checkbox" id="opt-sound" /></label>
     <label class="toggle-row"><span>Haptic buzz (if supported)</span><input type="checkbox" id="opt-haptics" /></label>
+    <label class="toggle-row"><span>Workout beat (128 BPM, synthesized)</span><input type="checkbox" id="opt-music" /></label>
 
     <p class="fine-print">Tip: for the best experience, tap your phone's browser menu → “Add to Home Screen” so it opens fullscreen and works offline in the gym.</p>
   </div>

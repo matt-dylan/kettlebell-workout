@@ -22,8 +22,10 @@ function shuffle(arr) {
 const GROUND = 164, HEAD_R = 9, KB_R = 13;
 const INK = '#f8fafc', AMBER = '#fbbf24', CYAN = '#38bdf8';
 
-function limb(pts) { // pts: [[x,y],[x,y],[x,y]]
-  return 'M ' + pts.map((p) => p[0] + ' ' + p[1]).join(' L ');
+function limb(pts) { // pts: flat [x1,y1,x2,y2,(x3,y3)] joint coordinates
+  let d = '';
+  for (let i = 0; i + 1 < pts.length; i += 2) d += (d ? ' L ' : 'M ') + pts[i] + ' ' + pts[i + 1];
+  return d;
 }
 function arrowHead(tipX, tipY, angleDeg) {
   const L = 9, sp = 0.42, a = (angleDeg * Math.PI) / 180;
@@ -35,11 +37,11 @@ function arrowSvg(ar) {
   if (ar.d) { // raw path; endpoint = last two numbers in the string
     const m = ar.d.match(/(-?[0-9.]+)\s+(-?[0-9.]+)\s*$/);
     const ex = +m[1], ey = +m[2];
-    return `<path d="${ar.d}" fill="none" stroke="${CYAN}" stroke-width="3" stroke-dasharray="6 7" opacity=".85"/>` +
+    return `<path class="kb-arrow" d="${ar.d}" fill="none" stroke="${CYAN}" stroke-width="3" stroke-dasharray="6 7" opacity=".85"/>` +
       arrowHead(ex, ey, ar.headAngle != null ? ar.headAngle : -90);
   }
   const ang = (Math.atan2(ar.to[1] - ar.ctrl[1], ar.to[0] - ar.ctrl[0]) * 180) / Math.PI;
-  return `<path d="M ${ar.from[0]} ${ar.from[1]} Q ${ar.ctrl[0]} ${ar.ctrl[1]} ${ar.to[0]} ${ar.to[1]}" fill="none" stroke="${CYAN}" stroke-width="3" stroke-dasharray="6 7" opacity=".85"/>` +
+  return `<path class="kb-arrow" d="M ${ar.from[0]} ${ar.from[1]} Q ${ar.ctrl[0]} ${ar.ctrl[1]} ${ar.to[0]} ${ar.to[1]}" fill="none" stroke="${CYAN}" stroke-width="3" stroke-dasharray="6 7" opacity=".85"/>` +
     arrowHead(ar.to[0], ar.to[1], ang);
 }
 function kbSvg(x, y) {
@@ -62,17 +64,59 @@ function personSvg(p) {
   (p.armsF || []).forEach((a) => g.push(`<path d="${limb(a)}" stroke="${INK}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
   return g.join('');
 }
-function renderPose(p, sizeClass) {
+function renderPose(frame, ex) {
   const parts = [];
   parts.push(`<line x1="12" y1="${GROUND + 3}" x2="208" y2="${GROUND + 3}" stroke="#334155" stroke-width="3" stroke-linecap="round"/>`);
-  if (p.box) {
-    const b = p.box;
+  if (ex && ex.box) {
+    const b = ex.box;
     parts.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="5" fill="#263449" stroke="#3b4a68" stroke-width="2"/>`);
   }
-  (p.arrows || []).forEach((ar) => parts.push(arrowSvg(ar)));
-  parts.push(personSvg(p));
-  if (p.kb) parts.push(kbSvg(p.kb[0], p.kb[1]));
+  ((ex && ex.arrows) || []).forEach((ar) => parts.push(arrowSvg(ar)));
+  parts.push(personSvg(frame));
+  if (frame.kb) parts.push(kbSvg(frame.kb[0], frame.kb[1]));
   return `<svg viewBox="0 0 220 180" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg>`;
+}
+
+// ---------------- pose animation (keyframe morphing) ----------------
+function lerpPose(A, B, u) {
+  const L = (p1, p2) => [p1[0] + (p2[0] - p1[0]) * u, p1[1] + (p2[1] - p1[1]) * u];
+  const limbL = (a, b) => a.map((limbPts, li) => { // flat joint coords, lerp by index
+    const out = [];
+    for (let i = 0; i < limbPts.length && i < b[li].length; i++) out.push(limbPts[i] + (b[li][i] - limbPts[i]) * u);
+    return out;
+  });
+  return {
+    head: L(A.head, B.head),
+    spine: [L(A.spine[0], B.spine[0]), L(A.spine[1], B.spine[1])],
+    armsF: limbL(A.armsF, B.armsF), armsB: limbL(A.armsB, B.armsB),
+    legsF: limbL(A.legsF, B.legsF), legsB: limbL(A.legsB, B.legsB),
+    kb: (A.kb && B.kb) ? L(A.kb, B.kb) : null
+  };
+}
+const smooth = (t) => t * t * (3 - 2 * t); // ease in/out at each keyframe
+function frameAt(frames, now) {
+  const n = frames.length;
+  if (n < 2) return frames[0];
+  const segDur = 850, seqLen = (n - 1) * 2; // ping-pong: A->B->(C->)...->A
+  const t = ((now - anim.t0) % (seqLen * segDur));
+  const seg = Math.floor(t / segDur);
+  const w = smooth((t - seg * segDur) / segDur);
+  const f = (s) => (s <= n - 1 ? s : 2 * (n - 1) - s);
+  return lerpPose(frames[f(seg)], frames[f(seg + 1)], w);
+}
+const anim = { ex: null, t0: 0 };
+function setAnimatedExercise(ex) {
+  if (anim.ex !== ex) { anim.ex = ex; anim.t0 = performance.now(); }
+}
+let lastDraw = 0;
+function animLoop(now) {
+  requestAnimationFrame(animLoop);
+  if (!W || W.paused || !document.body.dataset.screen) return;
+  const ex = W.animEx;
+  if (!ex || !ex.poses.length) return;
+  if (now - lastDraw < 33) return; // ~30fps cap
+  lastDraw = now;
+  $('#exercise-art').innerHTML = renderPose(frameAt(ex.poses, now), ex);
 }
 
 // ---------------- audio (Web Audio bell) ----------------
@@ -102,15 +146,74 @@ function chime(kind) {
     else if (kind === 'rest') bell(392, 0, 1.15, 0.5);
     else if (kind === 'finish') [523.3, 659.3, 784, 1046.5].forEach((f, i) => bell(f, i * 0.16, 0.8, 0.45));
     else if (kind === 'stop') bell(330, 0, 0.5, 0.35);
+    else if (kind === 'count') bell(987.8, 0, 0.14, 0.42);   // final-3-seconds beep
+    else if (kind === 'tick') bell(660, 0, 0.1, 0.3);         // EMOM :30 / :15 tick
   } catch (e) { /* audio unavailable */ }
+  const dbg = window.__kb && window.__kb.log;
+  if (dbg) dbg.push(kind);
 }
 function buzz(pattern) { if (settings.haptics && navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) {} } }
+
+// ---------------- workout beat (synthesized, no audio files) ----------------
+const music = { timer: null, nextTime: 0, step: 0, noiseBuf: null };
+function musicNoise(ctx) {
+  if (!music.noiseBuf) {
+    const len = Math.floor(ctx.sampleRate * 0.2);
+    music.noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = music.noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return music.noiseBuf;
+}
+function mKick(ctx, t) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(150, t);
+  o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+  g.gain.setValueAtTime(0.5, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.22);
+}
+function mHat(ctx, t, vol) {
+  const s = ctx.createBufferSource(); s.buffer = musicNoise(ctx);
+  const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 6500;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol * 0.2, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  s.connect(f).connect(g).connect(ctx.destination); s.start(t); s.stop(t + 0.06);
+}
+function mBass(ctx, t, fq) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = 'triangle'; o.frequency.value = fq;
+  g.gain.setValueAtTime(0.13, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+  o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.34);
+}
+const BASSLINE = [55, 65.41, 49, 73.42]; // A1 C2 G1 D2, one per bar
+function musicStep(step, t) {
+  const s = step % 16;
+  if (s % 4 === 0) mKick(audio(), t);                 // four-on-the-floor @ 128 BPM
+  mHat(audio(), t, s % 2 ? 0.9 : 0.5);                // offbeat hats
+  if (s === 0 || s === 8) mBass(audio(), t, BASSLINE[Math.floor(step / 16) % 4]);
+}
+function musicStart() {
+  if (music.timer) return;
+  const ctx = audio();
+  music.nextTime = ctx.currentTime + 0.06; music.step = 0;
+  music.timer = setInterval(() => {
+    while (music.nextTime < audio().currentTime + 0.15) {
+      musicStep(music.step, music.nextTime);
+      music.step++; music.nextTime += 60 / 128 / 2; // eighth notes at 128 BPM
+    }
+  }, 40);
+}
+function musicStop() { if (music.timer) { clearInterval(music.timer); music.timer = null; } }
 
 // ---------------- settings & history ----------------
 const LS_SET = 'kb.settings.v1', LS_HIST = 'kb.history.v1';
 function loadLS(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
 let settings = Object.assign(
-  { weightLb: 35, sound: true, haptics: true, group: 'full', durationMin: 30, workSec: 40, restSec: 20, level: 0 },
+  { weightLb: 35, sound: true, haptics: true, group: 'full', durationMin: 30, workSec: 40, restSec: 20, level: 0, mode: 'interval', music: false },
   loadLS(LS_SET) || {}
 );
 let history = Array.isArray(loadLS(LS_HIST)) ? loadLS(LS_HIST) : [];
@@ -120,31 +223,77 @@ function saveHistory() { try { localStorage.setItem(LS_HIST, JSON.stringify(hist
 // ---------------- workout generation ----------------
 const READY_SECS = 5;
 function poolFor(group, level) {
-  let p = EXERCISES.filter((e) => e.groups.includes(group));
+  // Full Body = a mix of EVERYTHING (all tagged full-body moves plus everything else)
+  let p = group === 'full' ? EXERCISES.slice() : EXERCISES.filter((e) => e.groups.includes(group));
   if (level > 0) { const f = p.filter((e) => e.level <= level); if (f.length >= 3) p = f; }
   return p;
 }
 function roundCount(T, w, r) { return Math.max(1, Math.floor((T + r) / (w + r))); }
-function buildSequence() {
-  const T = settings.durationMin * 60, w = settings.workSec, r = settings.restSec;
-  const n = roundCount(T, w, r);
-  const pool = poolFor(settings.group, settings.level);
-  let deck = shuffle(pool), seq = [];
-  while (seq.length < n) {
+
+// Deal items from a shuffled deck. Unilateral moves come out as back-to-back
+// L/R pairs so both sides get worked before moving on.
+function dealItems(count, pool) {
+  const items = [];
+  let deck = shuffle(pool);
+  while (items.length < count) {
     if (!deck.length) {
-      const prev = seq[seq.length - 1];
-      deck = shuffle(pool.filter((e) => !prev || e.id !== prev.id));
+      const prev = items[items.length - 1];
+      deck = shuffle(pool.filter((e) => !prev || e.id !== prev.ex.id));
       if (!deck.length) deck = pool.slice();
     }
-    seq.push(deck.pop());
+    const ex = deck.pop();
+    if (ex.unilateral && items.length + 2 <= count) {
+      const first = rand() < 0.5 ? 'L' : 'R';
+      items.push({ ex, side: first });
+      items.push({ ex, side: first === 'L' ? 'R' : 'L' });
+    } else {
+      items.push({ ex, side: null });
+    }
   }
-  const rem = T - (n * w + (n - 1) * r);
+  return items;
+}
+
+function buildSequence() {
+  const pool = poolFor(settings.group, settings.level);
+
+  // --- EMOM: one new move per minute, no explicit rest (rest happens in the minute) ---
+  if (settings.mode === 'emom') {
+    const rounds = Math.max(1, Math.round(settings.durationMin));
+    const items = dealItems(rounds, pool);
+    const blocks = [];
+    for (let i = 0; i < items.length; i++) {
+      blocks.push({ type: 'work', emom: true, ex: items[i].ex, side: items[i].side, secs: 60 });
+    }
+    return { blocks, T: rounds * 60 };
+  }
+
+  // --- Interval mode: fit items (mirror pairs stay together) into the total time ---
+  const T = settings.durationMin * 60, w = Math.max(5, settings.workSec), r = Math.max(1, settings.restSec);
+  const targetN = roundCount(T, w, r);
+  const cand = dealItems(targetN + Math.ceil(targetN / 2) + 2, pool);
+
+  const items = [];
+  let k = 0; // items taken so far
+  for (let i = 0; i < cand.length && k < targetN * 2; i++) {
+    const it = cand[i];
+    const usedNow = k === 0 ? 0 : k * w + (k - 1) * r;
+    const isPair = it.ex.unilateral && cand[i + 1] && cand[i + 1].ex.id === it.ex.id && cand[i + 1].side !== it.side;
+    if (isPair) {
+      const costPair = k === 0 ? 2 * w + r : 2 * (w + r);
+      if (usedNow + costPair <= T) { items.push(it, cand[i + 1]); i++; k += 2; continue; }
+      break; // don't split a pair — end the session here
+    }
+    const cost = k === 0 ? w : w + r;
+    if (usedNow + cost <= T) { items.push(it); k++; } else break;
+  }
+  if (!items.length && cand.length) items.push(cand[0]); // at least one exercise, always
+
+  const rem = Math.max(0, T - (k * w + Math.max(0, k - 1) * r));
   const blocks = [];
-  for (let i = 0; i < n; i++) {
-    let secs = w + (i === n - 1 ? Math.max(0, rem) : 0);
-    if (secs <= 0) secs = w;
-    blocks.push({ type: 'work', ex: seq[i], secs });
-    if (i < n - 1) blocks.push({ type: 'rest', secs: r });
+  for (let i = 0; i < items.length; i++) {
+    let secs = w + (i === items.length - 1 ? rem : 0); // leftover becomes a finisher push
+    blocks.push({ type: 'work', ex: items[i].ex, side: items[i].side, secs });
+    if (i < items.length - 1) blocks.push({ type: 'rest', secs: r });
   }
   return { blocks, T };
 }
@@ -171,18 +320,28 @@ function startWorkout() {
   showScreen('screen-workout');
   acquireWake();
   advanceTo(0, Date.now());
-}
+  if (settings.music) musicStart();
+  }
 
 function advanceTo(i, now) {
   W.idx = i;
   const b = W.blocks[i];
   b.endsAt = (now || Date.now()) + b.secs * 1000;
+  W.lastBeep = 0; W.lastTick = null;
   onPhaseStart(b);
 }
 
 function nextWorkBlock(fromIdx) {
   for (let i = fromIdx; i < W.blocks.length; i++) if (W.blocks[i].type === 'work') return W.blocks[i];
   return null;
+}
+
+function sideLabel(side) { return side === 'L' ? 'LEFT' : side === 'R' ? 'RIGHT' : ''; }
+function setSideDisplay(side) {
+  const badge = $('#ex-side');
+  badge.textContent = sideLabel(side);
+  badge.style.display = side ? '' : 'none';
+  $('#side-letter').textContent = side || '';
 }
 
 function onPhaseStart(b) {
@@ -192,39 +351,56 @@ function onPhaseStart(b) {
     phaseEl.textContent = 'GET READY'; phaseEl.className = 'phase-banner rest';
     cd.classList.remove('rest-mode');
     const first = nextWorkBlock(1);
-    $('#ex-name').textContent = first ? first.ex.name : '';
+    $('#ex-name').textContent = first ? (first.ex.name + (first.side ? ' — ' + sideLabel(first.side) : '')) : '';
     $('#ex-cue').textContent = 'Grab your kettlebell and get into position…';
-    $('#exercise-art').innerHTML = first ? renderPose(first.ex.pose) : '';
+    setSideDisplay(first && first.side);
+    W.animEx = first ? first.ex : null;
+    if (W.animEx) setAnimatedExercise(W.animEx);
     $('#ex-index').textContent = '';
   } else if (b.type === 'work') {
     chime('work'); buzz([90]);
-    phaseEl.textContent = 'WORK'; phaseEl.className = 'phase-banner work';
+    phaseEl.textContent = b.emom ? 'EMOM' : 'WORK'; phaseEl.className = 'phase-banner work';
     cd.classList.remove('rest-mode');
+    const totalWork = W.blocks.filter((x) => x.type === 'work').length;
     const num = W.doneCount + 1;
-    $('#ex-index').textContent = `${num} / ${W.blocks.filter((x) => x.type === 'work').length}`;
-    $('#ex-name').textContent = b.ex.name;
+    $('#ex-index').textContent = b.emom ? `MINUTE ${num} OF ${totalWork}` : `${num} / ${totalWork}`;
+    $('#ex-name').textContent = b.ex.name + (b.side ? ' — ' + sideLabel(b.side) : '');
     $('#ex-cue').textContent = b.ex.cue;
-    $('#exercise-art').innerHTML = renderPose(b.ex.pose);
-    document.title = `${b.secs}s · ${b.ex.name} — Kettlebell`;
-  } else { // rest
+    setSideDisplay(b.side);
+    W.animEx = b.ex;
+    setAnimatedExercise(W.animEx);
+    document.title = `${b.secs}s · ${b.ex.name}${b.side ? ' (' + b.side + ')' : ''} — Kettlebell`;
+  } else { // rest → show the NEXT exercise big so you can get ready
     chime('rest'); buzz([45, 40, 45]);
     phaseEl.textContent = 'REST'; phaseEl.className = 'phase-banner rest';
     cd.classList.add('rest-mode');
-    $('#ex-name').textContent = 'Rest';
-    $('#ex-cue').textContent = 'Breathe. Next up is already loaded.';
+    const nw = W.blocks[W.idx + 1]; // in interval mode the next block is always the upcoming work
+    if (nw && nw.type === 'work') {
+      $('#ex-name').textContent = 'UP NEXT: ' + nw.ex.name + (nw.side ? ' — ' + sideLabel(nw.side) : '');
+      $('#ex-cue').textContent = nw.ex.cue;
+      setSideDisplay(nw.side);
+      W.animEx = nw.ex;
+      setAnimatedExercise(W.animEx);
+    } else {
+      $('#ex-name').textContent = 'Rest';
+      $('#ex-cue').textContent = 'Breathe. You’re almost done.';
+      setSideDisplay(null);
+      W.animEx = null;
+    }
+    $('#ex-index').textContent = '';
     document.title = `Rest — Kettlebell`;
   }
-  // next-up preview
-  const nw = b.type === 'rest' ? W.blocks[W.idx + 1] : nextWorkBlock(W.idx + 1);
-  if (nw && nw.type === 'work') {
-    $('#next-name').textContent = nw.ex.name;
-    $('#next-art').innerHTML = renderPose(nw.ex.pose, true);
+  // small next-up preview (hidden during rest, where the main card already shows it)
+  const nw2 = b.type === 'rest' ? null : nextWorkBlock(W.idx + 1);
+  if (nw2 && nw2.type === 'work') {
+    $('#next-name').textContent = nw2.ex.name + (nw2.side ? ' (' + nw2.side + ')' : '');
+    $('#next-art').innerHTML = renderPose(nw2.ex.poses[0], nw2.ex);
     $('#next-card').style.display = '';
   } else {
     if (b.type === 'ready') {
       const f = nextWorkBlock(1);
       $('#next-card').style.display = '';
-      if (f) { $('#next-name').textContent = f.ex.name; $('#next-art').innerHTML = renderPose(f.ex.pose, true); }
+      if (f) { $('#next-name').textContent = f.ex.name + (f.side ? ' (' + f.side + ')' : ''); $('#next-art').innerHTML = renderPose(f.ex.poses[0], f.ex); }
     } else {
       $('#next-card').style.display = 'none';
       $('#next-name').textContent = '';
@@ -240,6 +416,14 @@ function tick() {
   // countdown display
   const secs = Math.max(0, Math.ceil(remainMs / 1000));
   $('#big-countdown').textContent = b.type === 'ready' ? String(secs) : (secs < 60 ? String(secs) : fmtClock(secs));
+
+  // final-3-seconds beeps on every work block; EMOM gets :30/:15 ticks too
+  if (b.type === 'work') {
+    if (secs <= 3 && secs >= 1 && W.lastBeep !== secs) { W.lastBeep = secs; chime('count'); buzz([25]); }
+    else if (b.emom && (secs === 30 || secs === 15) && W.lastTick !== secs) { W.lastTick = secs; chime('tick'); }
+  }
+  // fallback draw when rAF is throttled (dimmed screen / background tab)
+  if (!W.paused && Date.now() - lastDraw > 400) animLoop(performance.now());
   // progress bar over full session incl. ready
   let pos = 0;
   for (let i = 0; i < W.idx; i++) pos += W.blocks[i].secs;
@@ -261,11 +445,13 @@ function pauseToggle() {
   if (W.paused) {
     const b = W.blocks[W.idx];
     b.endsAt = Date.now() + W.frozenRemain;
+    anim.t0 += Date.now() - (W.pauseAt || Date.now()); // resume pose animation in place
     W.paused = false;
     btn.textContent = 'Pause';
   } else {
     const b = W.blocks[W.idx];
     W.frozenRemain = Math.max(0, b.endsAt - Date.now());
+    W.pauseAt = Date.now();
     W.paused = true;
     btn.textContent = 'Resume';
   }
@@ -283,6 +469,7 @@ function finishWorkout(completed) {
     completed: !!completed
   };
   history.unshift(entry); saveHistory();
+  musicStop();
   chime(completed ? 'finish' : 'stop');
   W = null;
   document.title = 'Kettlebell Workouts';
@@ -353,6 +540,7 @@ function buildChips(containerId, options, valueKey, opts) {
 function syncChips() {
   const groups = [
     ['#group-grid', settings.group],
+    ['#mode-chips', String(settings.mode)],
     ['#duration-chips', String(settings.durationMin)],
     ['#work-chips', String(settings.workSec)],
     ['#rest-chips', String(settings.restSec)],
@@ -392,6 +580,10 @@ function buildSetup() {
   buildChips('rest-chips', [10, 15, 20, 30, 45, 60].map((v) => ({ label: v + 's', value: v })), 'restSec', { custom: { min: 5, max: 300 }, small: true });
   buildChips('level-chips', LEVELS.map((l) => ({ label: l.label, value: l.id })), 'level', { small: true });
 
+  // mode chips (Interval vs EMOM); extra listener keeps work/rest rows in sync
+  buildChips('mode-chips', [{ label: 'Interval', value: 'interval' }, { label: 'EMOM · 1 move/min', value: 'emom' }], 'mode', { small: true });
+  qsa('#mode-chips .chip').forEach((c) => c.addEventListener('click', () => applyModeUI()));
+
   // weight chips on settings screen
   const wc = $('#weight-chips');
   [26, 35, 44, 53, 70].forEach((v) => {
@@ -424,6 +616,15 @@ function buildSetup() {
   os.addEventListener('change', () => { settings.sound = os.checked; saveSettings(); syncSoundUI(); });
   oh.addEventListener('change', () => { settings.haptics = oh.checked; saveSettings(); });
 
+  // workout beat (synthesized) — settings toggle + in-workout button
+  const om = $('#opt-music');
+  if (om) {
+    om.checked = !!settings.music;
+    om.addEventListener('change', () => { settings.music = om.checked; saveSettings(); syncSoundUI(); if (W) { if (settings.music) musicStart(); else musicStop(); } });
+  }
+  const mBtn2 = $('#btn-music');
+  if (mBtn2) mBtn2.addEventListener('click', () => { settings.music = !settings.music; saveSettings(); syncSoundUI(); if (W) { if (settings.music) musicStart(); else musicStop(); } });
+
   const libBtn = document.createElement('button');
   libBtn.textContent = '📖 View all exercises (' + EXERCISES.length + ')';
   libBtn.style.cssText = 'width:100%;margin-top:20px;padding:14px;border-radius:12px;background:#1e293b;color:#f8fafc;font-size:15px;font-weight:700;border:none;cursor:pointer';
@@ -445,17 +646,34 @@ function syncSoundUI() {
   $('#opt-sound').checked = !!settings.sound;
   const mb = $('#btn-mute-workout');
   if (mb) mb.textContent = settings.sound ? 'Mute' : 'Unmute';
+  const mBtn = $('#btn-music');
+  if (mBtn) { mBtn.textContent = settings.music ? '♪ On' : '♪ Off'; mBtn.classList.toggle('active', !!settings.music); }
 }
 
 function refreshSummary() {
-  const T = settings.durationMin * 60, w = settings.workSec, r = settings.restSec;
-  const n = roundCount(T, w, r);
   const pool = poolFor(settings.group, settings.level).length;
   const gl = (GROUPS.find((g) => g.id === settings.group) || {}).label;
-  $('#workout-summary').innerHTML =
-    `<b>${n}</b> exercises · <b>${w}s</b> on / <b>${r}s</b> rest · pool of <b>${pool}</b> ${gl} moves` +
-    (n > pool ? ' — new random order each session, moves recycle after a full shuffle' : '');
+  if (settings.mode === 'emom') {
+    const rounds = Math.max(1, Math.round(settings.durationMin));
+    $('#workout-summary').innerHTML =
+      `<b>${rounds}</b> minutes · one new move every minute (EMOM) · pool of <b>${pool}</b> ${gl} moves — hammer the first half of each minute, recover in the rest`;
+  } else {
+    const T = settings.durationMin * 60, w = settings.workSec, r = settings.restSec;
+    const n = roundCount(T, w, r);
+    $('#workout-summary').innerHTML =
+      `<b>${n}</b> exercises · <b>${w}s</b> on / <b>${r}s</b> rest · pool of <b>${pool}</b> ${gl} moves` +
+      (settings.group === 'full' ? ' — mixes every group so nothing gets skipped' : '') +
+      (n > pool ? ' — new random order each session, moves recycle after a full shuffle' : '');
+  }
   updateWeightChip();
+}
+
+function applyModeUI() {
+  const row = $('#interval-row');
+  if (!row) return;
+  const emom = settings.mode === 'emom';
+  row.classList.toggle('dimmed', emom);
+  row.querySelectorAll('.chip, input').forEach((el) => el.disabled = emom);
 }
 
 // ---------------- history ----------------
@@ -491,12 +709,12 @@ function renderPoseDebug() {
   closeBtn.addEventListener('click', () => wrap.remove());
   const grid = document.createElement('div');
   grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px';
-  grid.innerHTML = EXERCISES.map((e) => `<div style="background:#1e293b;border-radius:14px;padding:8px;width:calc(50% - 6px);min-width:170px"><svg viewBox="0 0 220 180" width="100%">${renderPose(e.pose).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '')}</svg><div style="font-size:14px;font-weight:700;margin-top:4px">${e.name} <span style="opacity:.6">L${e.level}</span></div><div style="font-size:12px;color:#94a3b8;margin-top:2px;line-height:1.35">${e.cue}</div></div>`).join('');
+  grid.innerHTML = EXERCISES.map((e) => `<div style="background:#1e293b;border-radius:14px;padding:8px;width:calc(50% - 6px);min-width:170px"><svg viewBox="0 0 220 180" width="100%">${renderPose(e.poses[0], e).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '')}</svg><div style="font-size:14px;font-weight:700;margin-top:4px">${e.name} <span style="opacity:.6">L${e.level}${e.unilateral ? ' · L/R' : ''}</span></div><div style="font-size:12px;color:#94a3b8;margin-top:2px;line-height:1.35">${e.cue}</div></div>`).join('');
   wrap.appendChild(closeBtn);
   const h2 = document.createElement('h2');
   h2.textContent = 'All Exercises (' + EXERCISES.length + ')';
   h2.style.cssText = 'margin:8px 0 4px;font-size:18px';
-  wrap.insertBefore(h2, grid);
+  wrap.appendChild(h2);
   wrap.appendChild(grid);
   document.body.appendChild(wrap);
 }
@@ -509,11 +727,15 @@ document.addEventListener('DOMContentLoaded', () => {
   renderHistory();
   syncSoundUI();
   updateWeightChip();
+  applyModeUI();
+  requestAnimationFrame(animLoop); // pose animation driver (no-ops outside workouts)
   if (location.search.includes('poses')) renderPoseDebug();
   // debug hooks for automated testing
   window.__kb = {
-    set: (o) => Object.assign(settings, o),
+    set: (o) => { Object.assign(settings, o); applyModeUI(); refreshSummary(); },
     start: () => startWorkout(),
-    state: () => W ? { idx: W.idx, paused: W.paused } : null
+    stop: () => W && finishWorkout(false),
+    state: () => W ? { idx: W.idx, paused: W.paused } : null,
+    log: []
   };
 });
