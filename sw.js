@@ -1,5 +1,5 @@
 /* Kettlebell Workouts — service worker (offline-first app shell) */
-const CACHE = 'kb-cache-v3';
+const CACHE = 'kb-cache-v4';
 const SHELL = [
   './',
   './index.html',

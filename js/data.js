@@ -1,17 +1,32 @@
-/* Kettlebell Workouts — exercise database v3 (accurate keyframes)
- * Each exercise has `poses`: an array of side-view keyframes in a 220x180
- * viewBox, ground at y=164. All figures face RIGHT (+x = front). The workout
- * screen morphs A -> B -> C -> ... -> back to animate the movement; more
- * keyframes give smoother, more faithful loops (swing bottom/mid/top, halo
- * front/over/back, squat standing/mid/bottom).
+/* Kettlebell Workouts — exercise database v4 (side + front views)
+ * Each exercise has `poses` (side view, facing right) AND `posesFront` (front
+ * view, figure faces the viewer). Both use a 220x180 viewBox with ground at
+ * y=164 and must have the SAME number of keyframes so the two angles animate
+ * in sync. The workout screen shows both angles side by side; more keyframes
+ * give smoother loops (swing bottom/mid/top, halo front/over/back…).
  *
  * Frame fields: head [x,y] · spine [[neck],[hip]] · armsF/armsB & legsF/legsB =
  * one limb each as flat joint coordinates [x1,y1,x2,y2,x3,y3] (shoulder-elbow-
  * wrist / hip-knee-foot) · kb [x,y] bell center. Frames contain the figure only;
- * arrows and boxes live on the exercise itself so they stay put while it moves.
+ * arrows and boxes live on the exercise itself so they stay put while it moves
+ * (side-view `arrows`/`box`; front view uses optional `boxFront`).
  * `unilateral: true` = single-arm/leg move, the engine deals it as an L then R
  * pair back-to-back.
  */
+
+// ---- front-view building blocks (figure faces viewer, center x=110) ----
+const F_STAND = { head:[110,58], spine:[[110,70],[110,104]], armsF:[97,73,94,95,92,117], armsB:[123,73,126,95,128,117], legsF:[104,104,102,134,100,164], legsB:[116,104,118,134,120,164] };
+function fp(over) { // front-view frame: standing base + per-pose overrides
+  return Object.assign({ head:F_STAND.head.slice(), spine:[[F_STAND.spine[0][0],F_STAND.spine[0][1]],[F_STAND.spine[1][0],F_STAND.spine[1][1]]], armsF:F_STAND.armsF.slice(), armsB:F_STAND.armsB.slice(), legsF:F_STAND.legsF.slice(), legsB:F_STAND.legsB.slice() }, over);
+}
+const F_OVERHEAD_L = { armsF:[98,72,100,48,101,26], kb:[101,14] }; // working arm locked up
+const F_HINGE_LEGS = { legsF:[104,110,101,138,99,164], legsB:[116,110,119,138,121,164] }; // slight knee bend
+const F_DEEP_SQUAT = { head:[110,84], spine:[[110,96],[109,130]], legsF:[103,130,88,150,84,164], legsB:[117,130,132,150,136,164] };
+const F_GOBLET = { armsF:[97,75,103,92,107,100], armsB:[123,75,117,92,113,100], kb:[110,100] };
+const F_STRIDE_L = { legsF:[104,106,94,136,88,164], legsB:[116,106,126,136,132,164] }; // left foot out
+const F_STRIDE_R = { legsF:[116,106,126,136,132,164], legsB:[104,106,94,136,88,164] }; // right foot out
+const F_SEATED = { head:[110,94], spine:[[110,106],[112,140]], legsF:[105,140,96,152,97,164], legsB:[119,140,128,152,127,164] };
+const F_PLANK = { head:[110,116], spine:[[110,128],[113,148]], armsB:[121,130,123,146,125,158], legsF:[106,148,104,156,102,163], legsB:[118,148,120,156,122,163] }; // foreshortened plank
 
 const EXERCISES = [
   // ---------------- FULL BODY ----------------
@@ -35,6 +50,11 @@ const EXERCISES = [
         armsF: [95, 74, 103, 80, 112, 86], armsB: [92, 74, 100, 80, 109, 86],
         legsF: [90, 106, 96, 134, 100, 164], legsB: [90, 106, 88, 134, 84, 164],
         kb: [120, 88] }
+    ],
+    posesFront: [
+      fp({ head:[110,64], spine:[[110,76],[110,110]], ...F_HINGE_LEGS, armsF:[98,78,104,105,108,132], armsB:[122,78,116,105,112,132], kb:[110,146] }), // hands low between the legs
+      fp({ head:[110,60], spine:[[110,72],[110,106]], armsF:[98,75,103,100,107,124], armsB:[122,75,117,100,113,124], kb:[110,134] }), // bell at thigh level
+      fp({ armsF:[98,75,92,82,103,88], armsB:[122,75,128,82,117,88], kb:[110,86] }) // arms driving forward at chest height
     ]
   },
   {
@@ -57,6 +77,11 @@ const EXERCISES = [
         armsF: [97, 74, 99, 50, 101, 28], armsB: [94, 76, 89, 87, 95, 93],
         legsF: [92, 106, 98, 134, 102, 164], legsB: [92, 106, 90, 134, 86, 164],
         kb: [102, 16] }
+    ],
+    posesFront: [
+      fp({ head:[110,64], spine:[[110,76],[110,110]], ...F_HINGE_LEGS, armsF:[98,78,104,105,108,132], armsB:[122,76,118,92,112,96], kb:[110,146] }), // working arm down between the legs
+      fp({ head:[110,62], spine:[[110,74],[110,108]], armsF:[98,75,88,94,94,110], kb:[96,122] }), // elbow driving out and down
+      fp({ ...F_OVERHEAD_L }) // locked overhead
     ]
   },
   {
@@ -79,6 +104,11 @@ const EXERCISES = [
         armsF: [96, 74, 98, 50, 100, 28], armsB: [93, 76, 90, 98, 94, 118],
         legsF: [90, 106, 96, 134, 100, 164], legsB: [90, 106, 88, 134, 84, 164],
         kb: [101, 16] }
+    ],
+    posesFront: [
+      fp({ head:[110,98], spine:[[110,110],[108,134]], legsF:[102,134,88,152,84,164], legsB:[116,134,130,152,134,164], armsF:[106,112,107,82,109,50], armsB:[114,112,120,132,126,150], kb:[110,38] }), // rolled low — arm still up
+      fp({ head:[110,80], spine:[[110,92],[108,126]], legsF:[103,126,96,150,94,164], legsB:[117,126,124,150,126,164], armsF:[106,94,108,62,109,32], armsB:[114,94,122,114,128,136], kb:[110,20] }), // bracing up from the knees
+      fp({ ...F_OVERHEAD_L }) // standing tall, arm locked
     ]
   },
   {
@@ -101,6 +131,11 @@ const EXERCISES = [
         armsF: [114, 100, 102, 106, 108, 116], armsB: [111, 100, 99, 106, 105, 116],
         legsF: [88, 112, 110, 140, 120, 164], legsB: [88, 112, 68, 140, 56, 164],
         kb: [109, 118] }
+    ],
+    posesFront: [
+      fp({ head:[110,66], spine:[[110,78],[110,112]], legsF:[102,112,92,140,84,164], legsB:[118,112,128,140,136,164], armsF:[98,80,105,106,109,134], armsB:[122,80,115,106,111,134], kb:[110,148] }), // wide stance, hands between the legs
+      fp({ armsF:[98,76,104,100,108,124], armsB:[122,76,116,100,112,124], kb:[110,136] }), // standing tall over the bell
+      fp({ head:[110,66], spine:[[110,78],[110,112]], legsF:[102,112,92,140,84,164], legsB:[118,112,128,140,136,164], armsF:[97,78,88,94,102,100], armsB:[123,78,132,94,118,100], kb:[110,102] }) // elbows flared under the ribs
     ]
   },
   {
@@ -123,6 +158,11 @@ const EXERCISES = [
         armsF: [96, 72, 98, 48, 100, 26], armsB: [93, 74, 90, 96, 92, 118],
         legsF: [92, 106, 98, 134, 102, 164], legsB: [92, 106, 90, 134, 86, 164],
         kb: [101, 14] }
+    ],
+    posesFront: [
+      fp({ head:[110,64], spine:[[110,76],[110,110]], ...F_HINGE_LEGS, armsF:[98,78,104,105,108,132], armsB:[122,78,116,105,112,132], kb:[110,146] }), // swing position
+      fp({ armsF:[98,74,92,94,104,86], armsB:[122,74,119,96,115,118], kb:[106,88] }), // racked on the shoulder
+      fp({ ...F_OVERHEAD_L }) // pressed overhead
     ]
   },
   {
@@ -145,6 +185,11 @@ const EXERCISES = [
         armsF: [96, 72, 98, 48, 100, 26], armsB: [93, 74, 90, 96, 92, 118],
         legsF: [92, 104, 98, 132, 102, 164], legsB: [92, 104, 88, 132, 84, 164],
         kb: [101, 14] }
+    ],
+    posesFront: [
+      fp({ armsF:[98,74,92,94,104,86], armsB:[122,74,119,96,115,118], kb:[106,88] }), // racked, standing
+      fp({ ...F_DEEP_SQUAT, armsF:[98,98,92,116,104,108], armsB:[122,98,128,116,116,108], kb:[106,110] }), // bottom of the squat, still racked
+      fp({ ...F_OVERHEAD_L }) // drive finishes the press
     ]
   },
 
@@ -169,6 +214,11 @@ const EXERCISES = [
         armsF: [97, 76, 99, 52, 101, 30], armsB: [93, 76, 91, 98, 93, 120],
         legsF: [90, 108, 78, 136, 66, 164], legsB: [90, 108, 106, 134, 112, 164],
         kb: [102, 18] }
+    ],
+    posesFront: [
+      fp({ ...F_OVERHEAD_L }), // standing, arm locked
+      fp({ armsF:[98,73,100,49,101,27], kb:[101,15], ...F_STRIDE_L }), // stride — left foot out
+      fp({ armsF:[98,73,100,49,101,27], kb:[101,15], ...F_STRIDE_R }) // opposite stride
     ]
   },
   {
@@ -191,6 +241,11 @@ const EXERCISES = [
         armsF: [96, 72, 98, 48, 100, 26], armsB: [93, 74, 90, 96, 92, 118],
         legsF: [93, 106, 99, 134, 103, 164], legsB: [93, 106, 91, 134, 87, 164],
         kb: [101, 14] }
+    ],
+    posesFront: [
+      fp({ armsF:[98,74,92,94,104,86], armsB:[122,74,119,96,115,118], kb:[106,88] }), // racked on the shoulder
+      fp({ armsF:[97,72,95,54,97,36], kb:[98,26] }), // pressing straight up along the side of the head
+      fp({ ...F_OVERHEAD_L }) // lockout
     ]
   },
   {
@@ -213,6 +268,11 @@ const EXERCISES = [
         armsF: [168, 153, 166, 131, 164, 109], armsB: [170, 155, 168, 133, 166, 111],
         legsF: [128, 156, 108, 140, 108, 164], legsB: [128, 156, 114, 144, 112, 164],
         kb: [163, 97] }
+    ],
+    posesFront: [
+      fp({ head:[106,96], spine:[[110,108],[112,140]], legsF:[105,140,96,152,97,164], legsB:[119,140,128,152,127,164], armsF:[103,110,97,128,107,124], armsB:[119,112,128,130,136,136], kb:[111,126] }), // leaning back — bell at the chest
+      fp({ head:[106,96], spine:[[110,108],[112,140]], legsF:[105,140,96,152,97,164], legsB:[119,140,128,152,127,164], armsF:[103,110,99,90,103,72], armsB:[119,112,128,130,136,136], kb:[105,60] }), // mid-press
+      fp({ head:[106,96], spine:[[110,108],[112,140]], legsF:[105,140,96,152,97,164], legsB:[119,140,128,152,127,164], armsF:[103,110,103,76,104,44], armsB:[119,112,128,130,136,136], kb:[105,32] }) // lockout overhead
     ]
   },
   {
@@ -230,6 +290,10 @@ const EXERCISES = [
         armsF: [178, 149, 170, 161, 144, 152], armsB: [181, 149, 173, 160, 148, 151],
         legsF: [124, 158, 100, 160, 74, 164], legsB: [124, 158, 102, 159, 78, 163],
         kb: [142, 151] }
+    ],
+    posesFront: [
+      fp({ ...F_PLANK, armsF:[99,130,97,146,95,158], kb:[95,151] }), // top — board on the bells
+      fp({ head:[110,124], spine:[[110,134],[113,152]], armsB:[121,136,123,150,125,159], legsF:[106,152,104,158,102,163], legsB:[118,152,120,158,122,163], armsF:[99,136,86,148,93,157], kb:[95,151] }) // bottom — elbows flared
     ]
   },
   {
@@ -247,6 +311,10 @@ const EXERCISES = [
         armsF: [176, 137, 168, 152, 150, 156], armsB: [178, 137, 178, 158, 162, 160],
         legsF: [122, 150, 98, 157, 72, 164], legsB: [122, 150, 100, 155, 76, 163],
         kb: [142, 151] }
+    ],
+    posesFront: [
+      fp({ ...F_PLANK, armsF:[99,130,100,98,101,66], kb:[102,54] }), // pressed overhead in the plank line
+      fp({ ...F_PLANK, armsF:[99,130,97,148,105,154], kb:[111,151] }) // arm down beside the hip
     ]
   },
   {
@@ -264,6 +332,10 @@ const EXERCISES = [
         armsF: [106, 98, 92, 104, 100, 114], armsB: [103, 98, 100, 122, 98, 142],
         legsF: [82, 112, 94, 138, 98, 164], legsB: [82, 112, 78, 138, 72, 164],
         kb: [103, 118] }
+    ],
+    posesFront: [
+      fp({ head:[110,64], spine:[[110,76],[110,110]], armsF:[97,78,95,102,94,126], kb:[93,140] }), // hinged forward — arm hanging
+      fp({ head:[110,64], spine:[[110,76],[110,110]], armsF:[97,78,87,94,101,100], kb:[103,102] }) // elbow flared back under the ribs
     ]
   },
   {
@@ -286,6 +358,11 @@ const EXERCISES = [
         armsF: [97, 76, 82, 92, 64, 108], armsB: [95, 76, 80, 94, 62, 111],
         legsF: [92, 106, 98, 134, 102, 164], legsB: [92, 106, 90, 134, 86, 164],
         kb: [56, 115] }
+    ],
+    posesFront: [
+      fp({ armsF:[97,75,92,83,103,89], armsB:[123,75,128,83,117,89], kb:[110,87] }), // bell in front of the chest
+      fp({ armsF:[97,73,100,50,104,34], armsB:[123,73,120,52,116,36], kb:[110,24] }), // over the top
+      fp({ armsF:[97,76,89,94,94,110], armsB:[123,76,131,94,126,110], kb:[110,112] }) // behind the lower back
     ]
   },
 
@@ -310,6 +387,11 @@ const EXERCISES = [
         armsF: [98, 74, 101, 98, 103, 120], armsB: [95, 74, 98, 98, 100, 120],
         legsF: [92, 106, 98, 134, 102, 164], legsB: [92, 106, 90, 134, 86, 164],
         kb: [106, 130] }
+    ],
+    posesFront: [
+      fp({ head:[110,66], spine:[[110,78],[110,112]], legsF:[104,112,101,139,99,164], legsB:[116,112,119,139,121,164], armsF:[98,80,105,108,109,136], armsB:[122,80,115,108,111,136], kb:[110,150] }), // hinged — bell between the legs
+      fp({ head:[110,60], spine:[[110,72],[110,107]], armsF:[98,76,104,102,108,128], armsB:[122,76,116,102,112,128], kb:[110,138] }), // halfway up
+      fp({ armsF:[98,75,104,99,108,122], armsB:[122,75,116,99,112,122], kb:[110,132] }) // locked out over the bell
     ]
   },
   {
@@ -332,6 +414,11 @@ const EXERCISES = [
         armsF: [91, 104, 98, 120, 99, 130], armsB: [88, 104, 95, 120, 96, 130],
         legsF: [80, 132, 106, 148, 110, 164], legsB: [80, 132, 92, 152, 90, 164],
         kb: [102, 126] }
+    ],
+    posesFront: [
+      fp({ ...F_GOBLET }), // standing goblet
+      fp({ head:[110,78], spine:[[110,90],[109,124]], legsF:[103,124,92,150,88,164], legsB:[117,124,128,150,132,164], armsF:[98,92,104,108,108,116], armsB:[122,92,116,108,112,116], kb:[110,116] }), // mid-squat — knees tracking out
+      fp({ ...F_DEEP_SQUAT, armsF:[98,100,104,116,108,124], armsB:[122,100,116,116,112,124], kb:[110,124] }) // bottom
     ]
   },
   {
@@ -354,6 +441,11 @@ const EXERCISES = [
         armsF: [91, 98, 98, 114, 99, 124], armsB: [88, 98, 95, 114, 96, 124],
         legsF: [80, 126, 104, 142, 108, 164], legsB: [80, 126, 68, 154, 60, 164],
         kb: [102, 120] }
+    ],
+    posesFront: [
+      fp({ ...F_GOBLET }), // standing goblet
+      fp({ head:[110,78], spine:[[110,90],[109,122]], legsF:[103,122,96,148,92,164], legsB:[117,122,128,150,136,164], armsF:[98,92,104,108,108,116], armsB:[122,92,116,108,112,116], kb:[110,114] }), // split stance — front knee over the ankle
+      fp({ head:[110,84], spine:[[110,96],[109,128]], legsF:[103,128,95,150,91,164], legsB:[117,128,130,153,138,164], armsF:[98,98,104,114,108,122], armsB:[122,98,116,114,112,122], kb:[110,120] }) // back knee dropping
     ]
   },
   {
@@ -376,12 +468,18 @@ const EXERCISES = [
         armsF: [95, 78, 86, 100, 80, 120], armsB: [97, 78, 104, 100, 108, 120],
         legsF: [90, 110, 74, 138, 58, 164], legsB: [90, 110, 108, 134, 114, 164],
         kb: [78, 132] }
+    ],
+    posesFront: [
+      fp({ armsF:[98,74,100,98,102,122], kb:[103,134] }), // standing — bell at the side of the hip
+      fp({ head:[110,62], spine:[[110,74],[109,110]], armsF:[98,76,100,100,102,122], kb:[103,134], ...F_STRIDE_L }), // stride — left leg through
+      fp({ head:[110,62], spine:[[110,74],[109,110]], armsF:[98,76,100,100,102,122], kb:[103,134], ...F_STRIDE_R }) // opposite stride
     ]
   },
   {
     id: 'step-up', name: 'Step-Up', groups: ['lower'], level: 1,
     cue: 'Drive through the front heel to stand on the box — step back down under control.',
     box: { x: 126, y: 126, w: 72, h: 38 },
+    boxFront: { x: 65, y: 126, w: 90, h: 38 },
     arrows: [{ from: [96, 150], ctrl: [116, 140], to: [138, 128] }],
     poses: [
       // A: standing beside the box, bell at the chest
@@ -399,6 +497,11 @@ const EXERCISES = [
         armsF: [146, 37, 152, 52, 153, 62], armsB: [143, 37, 149, 52, 150, 62],
         legsF: [140, 68, 146, 96, 150, 126], legsB: [140, 68, 136, 96, 132, 126],
         kb: [156, 60] }
+    ],
+    posesFront: [
+      fp({ armsF:[98,74,100,98,102,122], kb:[103,134] }), // standing in front of the box
+      fp({ head:[110,62], spine:[[110,74],[109,110]], armsF:[98,76,100,100,102,122], kb:[103,134], legsF:[103,110,107,134,105,146], legsB:[117,110,122,138,126,164] }), // driving the front foot up
+      fp({ head:[110,20], spine:[[110,32],[110,66]], armsF:[98,36,100,60,102,84], armsB:[122,36,120,60,118,84], kb:[103,96], legsF:[104,66,102,96,100,126], legsB:[116,66,118,96,120,126] }) // standing on top
     ]
   },
   {
@@ -421,6 +524,11 @@ const EXERCISES = [
         armsF: [93, 102, 100, 118, 101, 128], armsB: [90, 102, 97, 118, 98, 128],
         legsF: [80, 130, 106, 148, 110, 164], legsB: [80, 130, 72, 150, 58, 164],
         kb: [104, 124] }
+    ],
+    posesFront: [
+      fp({ ...F_GOBLET }), // standing goblet
+      fp({ head:[110,84], spine:[[110,96],[109,128]], legsF:[103,128,84,146,74,164], legsB:[117,128,132,150,140,164], armsF:[98,98,104,114,108,122], armsB:[122,98,116,114,112,122], kb:[110,120] }), // knee out wide — hips back over it
+      fp({ head:[110,88], spine:[[110,100],[109,132]], legsF:[103,132,78,148,66,164], legsB:[117,132,136,152,144,164], armsF:[98,102,104,118,108,126], armsB:[122,102,116,118,112,126], kb:[110,124] }) // deeper
     ]
   },
 
@@ -445,6 +553,11 @@ const EXERCISES = [
         armsF: [95, 76, 86, 100, 80, 120], armsB: [97, 76, 104, 100, 108, 120],
         legsF: [90, 108, 78, 136, 66, 164], legsB: [90, 108, 106, 134, 112, 164],
         kb: [78, 134] }
+    ],
+    posesFront: [
+      fp({ armsF:[98,74,100,98,102,122], kb:[103,136] }), // standing — bell at the side of one hip
+      fp({ head:[110,62], spine:[[110,74],[109,108]], armsF:[98,76,100,100,102,122], kb:[103,136], ...F_STRIDE_L }), // walking — shoulders stay level
+      fp({ head:[110,62], spine:[[110,74],[109,108]], armsF:[98,76,100,100,102,122], kb:[103,136], ...F_STRIDE_R }) // opposite stride
     ]
   },
   {
@@ -462,6 +575,10 @@ const EXERCISES = [
         armsF: [106, 125, 108, 95, 110, 65], armsB: [103, 127, 92, 144, 84, 160],
         legsF: [72, 128, 92, 150, 98, 164], legsB: [72, 128, 56, 146, 40, 164],
         kb: [111, 53] }
+    ],
+    posesFront: [
+      fp({ head:[108,62], spine:[[109,74],[107,108]], armsF:[97,75,99,50,101,28], kb:[102,16], legsF:[103,108,94,136,88,164], legsB:[115,108,124,136,130,164] }), // top — lunge with arm locked up
+      fp({ head:[110,100], spine:[[110,112],[108,136]], legsF:[102,136,88,152,84,164], legsB:[116,136,130,152,134,164], armsF:[105,114,107,80,109,44], armsB:[114,114,120,134,126,152], kb:[110,32] }) // hinged down deep — arm still up
     ]
   },
   {
@@ -484,6 +601,11 @@ const EXERCISES = [
         armsF: [96, 76, 91, 96, 103, 84], armsB: [93, 76, 90, 98, 92, 120],
         legsF: [90, 108, 78, 136, 66, 164], legsB: [90, 108, 106, 134, 112, 164],
         kb: [107, 90] }
+    ],
+    posesFront: [
+      fp({ armsF:[98,74,92,94,104,86], armsB:[122,74,119,96,115,118], kb:[106,88] }), // racked — walking tall
+      fp({ head:[110,62], spine:[[110,74],[109,108]], armsF:[97,76,91,98,103,88], kb:[106,90], ...F_STRIDE_L }), // stride — bell stays racked
+      fp({ head:[110,62], spine:[[110,74],[109,108]], armsF:[97,76,91,98,103,88], kb:[106,90], ...F_STRIDE_R }) // opposite stride
     ]
   },
   {
@@ -506,6 +628,11 @@ const EXERCISES = [
         armsF: [78, 120, 64, 130, 52, 136], armsB: [75, 122, 61, 132, 49, 138],
         legsF: [96, 148, 116, 150, 124, 164], legsB: [96, 148, 112, 152, 120, 164],
         kb: [44, 138] }
+    ],
+    posesFront: [
+      fp({ ...F_SEATED, armsF:[103,110,92,122,84,128], armsB:[117,110,104,126,92,132], kb:[78,132] }), // rotated to one side
+      fp({ ...F_SEATED, armsF:[103,112,102,128,108,136], armsB:[117,112,118,128,112,136], kb:[110,140] }), // center — bell over the lap
+      fp({ ...F_SEATED, armsF:[103,110,116,122,124,128], armsB:[117,110,130,126,142,132], kb:[142,132] }) // rotated the other way
     ]
   },
   {
@@ -528,6 +655,11 @@ const EXERCISES = [
         armsF: [178, 137, 186, 152, 194, 156], armsB: [180, 137, 180, 158, 164, 160],
         legsF: [122, 150, 98, 157, 72, 164], legsB: [122, 150, 100, 155, 76, 163],
         kb: [202, 151] }
+    ],
+    posesFront: [
+      fp({ ...F_PLANK, armsF:[99,130,100,98,101,66], kb:[102,54] }), // pressed overhead in the plank line
+      fp({ ...F_PLANK, armsF:[99,130,103,148,108,154], armsB:[121,130,117,148,112,154], kb:[110,151] }), // hands together under the chest
+      fp({ ...F_PLANK, armsF:[99,130,110,148,124,152], kb:[130,152] }) // passed back behind the hips
     ]
   }
 ];

@@ -69,17 +69,28 @@ function personSvg(p) {
   asLimbs(p.armsF).forEach((a) => g.push(`<path d="${limb(a)}" stroke="${INK}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
   return g.join('');
 }
-function renderPose(frame, ex) {
+function renderPose(frame, ex, front) {
   const parts = [];
   parts.push(`<line x1="12" y1="${GROUND + 3}" x2="208" y2="${GROUND + 3}" stroke="#334155" stroke-width="3" stroke-linecap="round"/>`);
-  if (ex && ex.box) {
+  if (ex && !front && ex.box) { // side-view box (step-up platform from the side)
     const b = ex.box;
     parts.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="5" fill="#263449" stroke="#3b4a68" stroke-width="2"/>`);
+  } else if (ex && front && ex.boxFront) { // box as seen from the front
+    const b = ex.boxFront;
+    parts.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="5" fill="#263449" stroke="#3b4a68" stroke-width="2"/>`);
   }
-  ((ex && ex.arrows) || []).forEach((ar) => parts.push(arrowSvg(ar)));
+  if (!front) ((ex && ex.arrows) || []).forEach((ar) => parts.push(arrowSvg(ar))); // arrows are drawn in side-view coordinates
   parts.push(personSvg(frame));
   if (frame.kb) parts.push(kbSvg(frame.kb[0], frame.kb[1]));
   return `<svg viewBox="0 0 220 180" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg>`;
+}
+
+// Side + front views side by side (falls back to a single side figure when an
+// exercise has no posesFront). Labels make it obvious which angle is which.
+function renderPair(sideFrame, frontFrame, ex) {
+  if (!frontFrame) return renderPose(sideFrame, ex);
+  const col = (svg, label) => `<div class="art-col">${svg}<span class="art-label">${label}</span></div>`;
+  return `<div class="art-pair">${col(renderPose(sideFrame, ex), 'side')}${col(renderPose(frontFrame, ex, true), 'front')}</div>`;
 }
 
 // ---------------- pose animation (keyframe morphing) ----------------
@@ -125,7 +136,8 @@ function animLoop(now) {
   if (!ex || !ex.poses.length) return;
   if (now - lastDraw < 33) return; // ~30fps cap
   lastDraw = now;
-  $('#exercise-art').innerHTML = renderPose(frameAt(ex.poses, now), ex);
+  const sf = frameAt(ex.poses, now);
+  $('#exercise-art').innerHTML = renderPair(sf, ex.posesFront ? frameAt(ex.posesFront, now) : null, ex);
 }
 
 // ---------------- audio (Web Audio bell) ----------------
@@ -156,7 +168,6 @@ function chime(kind) {
     else if (kind === 'finish') bell(784, 0, 2.4, 0.6); // one long, clear "done" tone
     else if (kind === 'stop') bell(330, 0, 0.5, 0.35);
     else if (kind === 'count') bell(987.8, 0, 0.14, 0.42);   // final-3-seconds beep
-    else if (kind === 'tick') bell(660, 0, 0.1, 0.3);         // EMOM :30 / :15 tick
   } catch (e) { /* audio unavailable */ }
   const dbg = window.__kb && window.__kb.log;
   if (dbg) dbg.push(kind);
@@ -207,18 +218,30 @@ function dealItems(count, pool) {
   return items;
 }
 
+// EMOM plan: ONE fixed set of K moves runs every minute; whatever seconds are
+// left in the minute after the set is your rest. workSec = active seconds/min.
+function emomPlan(workSec) {
+  const active = Math.min(50, Math.max(12, workSec));
+  const K = Math.max(3, Math.min(6, Math.round(active / 10))); // moves in the set (an L/R pair counts as two)
+  const slice = Math.max(6, Math.floor(active / K));           // seconds per move within a minute
+  return { K, slice, restLeft: Math.max(5, 60 - K * slice) };  // leftover in the minute = your rest
+}
+
 function buildSequence() {
   const pool = poolFor(settings.group, settings.level);
 
-  // --- EMOM: one new move per minute, no explicit rest (rest happens in the minute) ---
+  // --- EMOM: same set of moves every minute; leftover seconds in each minute are rest ---
   if (settings.mode === 'emom') {
-    const rounds = Math.max(1, Math.round(settings.durationMin));
-    const items = dealItems(rounds, pool);
+    const M = Math.max(1, Math.round(settings.durationMin));
+    const plan = emomPlan(settings.workSec);
+    const set = dealItems(plan.K, pool); // dealt once — the same circuit repeats every minute
     const blocks = [];
-    for (let i = 0; i < items.length; i++) {
-      blocks.push({ type: 'work', emom: true, ex: items[i].ex, side: items[i].side, secs: 60 });
+    for (let m = 1; m <= M; m++) {
+      let slot = 0;
+      set.forEach((it) => { slot++; blocks.push({ type: 'work', emom: true, ex: it.ex, side: it.side, secs: plan.slice, minute: m, slot }); });
+      if (m < M) blocks.push({ type: 'rest', emom: true, secs: plan.restLeft, minute: m }); // no trailing rest on the final minute
     }
-    return { blocks, T: rounds * 60 };
+    return { blocks, T: (M - 1) * 60 + plan.K * plan.slice, emom: { minutes: M, ...plan } };
   }
 
   // --- Interval mode: fit items (mirror pairs stay together) into the total time ---
@@ -265,10 +288,10 @@ function fmtClock(secs) {
 function startWorkout() {
   if (W) return;
   audio(); // unlock on user gesture
-  const { blocks, T } = buildSequence();
+  const { blocks, T, emom } = buildSequence();
   W = {
     blocks: [{ type: 'ready', secs: READY_SECS }, ...blocks],
-    T, idx: -1, paused: false, frozenRemain: 0, doneCount: 0
+    T, idx: -1, paused: false, frozenRemain: 0, doneCount: 0, emomMeta: emom || null
   };
   document.body.dataset.screen = 'workout';
   showScreen('screen-workout');
@@ -316,7 +339,7 @@ function onPhaseStart(b) {
     cd.classList.remove('rest-mode');
     const totalWork = W.blocks.filter((x) => x.type === 'work').length;
     const num = W.doneCount + 1;
-    $('#ex-index').textContent = b.emom ? `MINUTE ${num} OF ${totalWork}` : `${num} / ${totalWork}`;
+    $('#ex-index').textContent = (b.emom && W.emomMeta) ? `MIN ${b.minute}/${W.emomMeta.minutes} · MOVE ${b.slot}/${W.emomMeta.K}` : `${num} / ${totalWork}`;
     $('#ex-name').textContent = b.ex.name + (b.side ? ' — ' + sideLabel(b.side) : '');
     $('#ex-cue').textContent = b.ex.cue;
     setSideDisplay(b.side);
@@ -327,8 +350,15 @@ function onPhaseStart(b) {
     chime('rest'); buzz([45, 40, 45]);
     phaseEl.textContent = 'REST'; phaseEl.className = 'phase-banner rest';
     cd.classList.add('rest-mode');
-    const nw = W.blocks[W.idx + 1]; // in interval mode the next block is always the upcoming work
-    if (nw && nw.type === 'work') {
+    const nw = W.blocks[W.idx + 1]; // the next block is always an upcoming work block
+    if (b.emom && W.emomMeta) {
+      // EMOM rest inside a minute → preview the whole set that repeats next minute
+      const coming = W.blocks.filter((x) => x.type === 'work' && x.minute === b.minute + 1);
+      $('#ex-name').textContent = `NEXT MINUTE · ${W.emomMeta.K} MOVES`;
+      $('#ex-cue').textContent = coming.map((x) => x.ex.name + (x.side ? ' (' + x.side + ')' : '')).join('  →  ');
+      setSideDisplay(null);
+      W.animEx = coming.length ? coming[0].ex : null;
+    } else if (nw && nw.type === 'work') {
       $('#ex-name').textContent = 'UP NEXT: ' + nw.ex.name + (nw.side ? ' — ' + sideLabel(nw.side) : '');
       $('#ex-cue').textContent = nw.ex.cue;
       setSideDisplay(nw.side);
@@ -347,13 +377,13 @@ function onPhaseStart(b) {
   const nw2 = b.type === 'rest' ? null : nextWorkBlock(W.idx + 1);
   if (nw2 && nw2.type === 'work') {
     $('#next-name').textContent = nw2.ex.name + (nw2.side ? ' (' + nw2.side + ')' : '');
-    $('#next-art').innerHTML = renderPose(nw2.ex.poses[0], nw2.ex);
+    $('#next-art').innerHTML = renderPair(nw2.ex.poses[0], nw2.ex.posesFront ? nw2.ex.posesFront[0] : null, nw2.ex);
     $('#next-card').style.display = '';
   } else {
     if (b.type === 'ready') {
       const f = nextWorkBlock(1);
       $('#next-card').style.display = '';
-      if (f) { $('#next-name').textContent = f.ex.name + (f.side ? ' (' + f.side + ')' : ''); $('#next-art').innerHTML = renderPose(f.ex.poses[0], f.ex); }
+      if (f) { $('#next-name').textContent = f.ex.name + (f.side ? ' (' + f.side + ')' : ''); $('#next-art').innerHTML = renderPair(f.ex.poses[0], f.ex.posesFront ? f.ex.posesFront[0] : null, f.ex); }
     } else {
       $('#next-card').style.display = 'none';
       $('#next-name').textContent = '';
@@ -370,10 +400,9 @@ function tick() {
   const secs = Math.max(0, Math.ceil(remainMs / 1000));
   $('#big-countdown').textContent = b.type === 'ready' ? String(secs) : (secs < 60 ? String(secs) : fmtClock(secs));
 
-  // final-3-seconds beeps on every work block; EMOM gets :30/:15 ticks too
+  // final-3-seconds beeps on every work block (each EMOM move slice too)
   if (b.type === 'work') {
     if (secs <= 3 && secs >= 1 && W.lastBeep !== secs) { W.lastBeep = secs; chime('count'); buzz([25]); }
-    else if (b.emom && (secs === 30 || secs === 15) && W.lastTick !== secs) { W.lastTick = secs; chime('tick'); }
   }
   // fallback draw when rAF is throttled (dimmed screen / background tab)
   if (!W.paused && Date.now() - lastDraw > 400) animLoop(performance.now());
@@ -533,7 +562,7 @@ function buildSetup() {
   buildChips('level-chips', LEVELS.map((l) => ({ label: l.label, value: l.id })), 'level', { small: true });
 
   // mode chips (Interval vs EMOM); extra listener keeps work/rest rows in sync
-  buildChips('mode-chips', [{ label: 'Interval', value: 'interval' }, { label: 'EMOM · 1 move/min', value: 'emom' }], 'mode', { small: true });
+  buildChips('mode-chips', [{ label: 'Interval', value: 'interval' },  { label: 'EMOM', value: 'emom' }], 'mode', { small: true });
   qsa('#mode-chips .chip').forEach((c) => c.addEventListener('click', () => applyModeUI()));
 
   // weight chips on settings screen
@@ -595,9 +624,10 @@ function refreshSummary() {
   const pool = poolFor(settings.group, settings.level).length;
   const gl = (GROUPS.find((g) => g.id === settings.group) || {}).label;
   if (settings.mode === 'emom') {
-    const rounds = Math.max(1, Math.round(settings.durationMin));
+    const M = Math.max(1, Math.round(settings.durationMin));
+    const plan = emomPlan(settings.workSec);
     $('#workout-summary').innerHTML =
-      `<b>${rounds}</b> minutes · one new move every minute (EMOM) · pool of <b>${pool}</b> ${gl} moves — hammer the first half of each minute, recover in the rest`;
+      `<b>${M}</b> minutes · one set of <b>${plan.K} moves</b> every minute (~<b>${plan.slice}s</b> each) — the leftover seconds in each minute are your rest`;
   } else {
     const T = settings.durationMin * 60, w = settings.workSec, r = settings.restSec;
     const n = roundCount(T, w, r);
@@ -610,11 +640,15 @@ function refreshSummary() {
 }
 
 function applyModeUI() {
-  const row = $('#interval-row');
-  if (!row) return;
-  const emom = settings.mode === 'emom';
-  row.classList.toggle('dimmed', emom);
-  row.querySelectorAll('.chip, input').forEach((el) => el.disabled = emom);
+  // EMOM uses the WORK seconds as "active seconds per minute"; rest is automatic (leftover in each minute)
+  const colRest = $('#col-rest');
+  if (colRest) {
+    const emom = settings.mode === 'emom';
+    colRest.classList.toggle('dimmed', emom);
+    colRest.querySelectorAll('.chip, input').forEach((el) => el.disabled = emom);
+  }
+  const wl = $('#work-label');
+  if (wl) wl.textContent = settings.mode === 'emom' ? 'Active sec / minute' : 'Work (sec)';
 }
 
 // ---------------- history ----------------
@@ -650,7 +684,7 @@ function renderPoseDebug() {
   closeBtn.addEventListener('click', () => wrap.remove());
   const grid = document.createElement('div');
   grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px';
-  grid.innerHTML = EXERCISES.map((e) => `<div style="background:#1e293b;border-radius:14px;padding:8px;width:calc(50% - 6px);min-width:170px"><svg viewBox="0 0 220 180" width="100%">${renderPose(e.poses[0], e).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '')}</svg><div style="font-size:14px;font-weight:700;margin-top:4px">${e.name} <span style="opacity:.6">L${e.level}${e.unilateral ? ' · L/R' : ''}</span></div><div style="font-size:12px;color:#94a3b8;margin-top:2px;line-height:1.35">${e.cue}</div></div>`).join('');
+  grid.innerHTML = EXERCISES.map((e) => `<div style="background:#1e293b;border-radius:14px;padding:8px;width:calc(50% - 6px);min-width:170px">${renderPair(e.poses[0], e.posesFront ? e.posesFront[0] : null, e)}<div style="font-size:14px;font-weight:700;margin-top:4px">${e.name} <span style="opacity:.6">L${e.level}${e.unilateral ? ' · L/R' : ''}</span></div><div style="font-size:12px;color:#94a3b8;margin-top:2px;line-height:1.35">${e.cue}</div></div>`).join('');
   wrap.appendChild(closeBtn);
   const h2 = document.createElement('h2');
   h2.textContent = 'All Exercises (' + EXERCISES.length + ')';

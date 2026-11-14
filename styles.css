@@ -113,6 +113,14 @@ body {
 .exercise-art { position: relative; z-index: 2; flex: 1; display: flex; align-items: center; justify-content: center; padding: 8px 24px; min-height: 120px; }
 .side-badge { background: rgba(56, 189, 248, .18); color: var(--cyan); border-radius: 99px; padding: 3px 12px; font-size: 12px; font-weight: 800; letter-spacing: 1.5px; }
 .exercise-art svg { width: 100%; max-width: 340px; height: auto; max-height: 34vh; border-radius: var(--radius); background: var(--panel); }
+/* dual-angle view: side + front figures side by side */
+.art-pair { display: flex; gap: 10px; align-items: center; justify-content: center; width: 100%; }
+.art-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.art-label { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-top: 3px; font-weight: 700; }
+/* small "up next" previews */
+.next-art { flex-shrink: 0; display: flex; align-items: center; gap: 5px; }
+.next-art .art-col svg, .next-art > svg { width: 40px; height: auto; max-height: none; background: transparent; border-radius: 8px; }
+.next-art .art-label { font-size: 8px; margin-top: 1px; }
 
 .next-card { display: flex; align-items: center; gap: 12px; margin: 4px 16px 10px; padding: 10px 14px; background: var(--panel); border-radius: 14px; }
 .next-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); writing-mode: vertical-rl; transform: rotate(180deg); }
