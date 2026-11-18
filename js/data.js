@@ -45,16 +45,16 @@ const EXERCISES = [
         armsF: [100, 80, 108, 102, 114, 122], armsB: [97, 80, 105, 102, 111, 122],
         legsF: [86, 108, 94, 136, 98, 164], legsB: [86, 108, 84, 136, 80, 164],
         kb: [118, 132] },
-      // C: top of swing — glutes driving, arms extended to chest height in front of the face
+      // C: top of swing — glutes driving, arms extended forward, bell floating at chin/chest height in front of the face
       { head: [99, 60], spine: [[97, 72], [90, 106]],
-        armsF: [95, 74, 103, 80, 112, 86], armsB: [92, 74, 100, 80, 109, 86],
+        armsF: [96, 74, 113, 70, 130, 68], armsB: [93, 74, 110, 72, 127, 70],
         legsF: [90, 106, 96, 134, 100, 164], legsB: [90, 106, 88, 134, 84, 164],
-        kb: [120, 88] }
+        kb: [131, 84] }
     ],
     posesFront: [
       fp({ head:[110,64], spine:[[110,76],[110,110]], ...F_HINGE_LEGS, armsF:[98,78,104,105,108,132], armsB:[122,78,116,105,112,132], kb:[110,146] }), // hands low between the legs
       fp({ head:[110,60], spine:[[110,72],[110,106]], armsF:[98,75,103,100,107,124], armsB:[122,75,117,100,113,124], kb:[110,134] }), // bell at thigh level
-      fp({ armsF:[98,75,92,82,103,88], armsB:[122,75,128,82,117,88], kb:[110,86] }) // arms driving forward at chest height
+      fp({ armsF:[98,75,104,86,108,94], armsB:[122,75,116,86,112,94], kb:[110,110] }) // arms driving toward you at chest height (foreshortened)
     ]
   },
   {
@@ -62,9 +62,9 @@ const EXERCISES = [
     cue: 'One motion: swing down, pull through with a fast elbow, lock out under the bell.',
     arrows: [{ from: [96, 152], ctrl: [64, 86], to: [118, 20] }],
     poses: [
-      // A: hinge bottom — bell between the legs, free arm on the chest
+      // A: hinge bottom — bell between the legs, free arm relaxed at the side (full length)
       { head: [121, 86], spine: [[112, 94], [80, 114]],
-        armsF: [110, 96, 108, 120, 105, 142], armsB: [107, 96, 98, 106, 92, 100],
+        armsF: [110, 96, 108, 120, 105, 142], armsB: [107, 96, 99, 114, 97, 132],
         legsF: [80, 114, 96, 138, 100, 164], legsB: [80, 114, 74, 138, 66, 164],
         kb: [95, 148] },
       // B: mid-pull — standing, elbow driving low and back, forearm vertical in front of the thigh
@@ -72,14 +72,14 @@ const EXERCISES = [
         armsF: [97, 76, 92, 104, 104, 120], armsB: [95, 78, 91, 100, 93, 122],
         legsF: [88, 108, 94, 136, 98, 164], legsB: [88, 108, 86, 136, 82, 164],
         kb: [106, 130] },
-      // C: overhead lockout — arm straight up under the bell, ribs stacked over the wrist
+      // C: overhead lockout — arm straight up under the bell, ribs stacked over the wrist; free arm relaxed at the side
       { head: [100, 60], spine: [[98, 72], [92, 106]],
-        armsF: [97, 74, 99, 50, 101, 28], armsB: [94, 76, 89, 87, 95, 93],
+        armsF: [97, 74, 99, 50, 101, 28], armsB: [94, 76, 87, 95, 91, 113],
         legsF: [92, 106, 98, 134, 102, 164], legsB: [92, 106, 90, 134, 86, 164],
         kb: [102, 16] }
     ],
     posesFront: [
-      fp({ head:[110,64], spine:[[110,76],[110,110]], ...F_HINGE_LEGS, armsF:[98,78,104,105,108,132], armsB:[122,76,118,92,112,96], kb:[110,146] }), // working arm down between the legs
+      fp({ head:[110,64], spine:[[110,76],[110,110]], ...F_HINGE_LEGS, armsF:[98,78,104,105,108,132], armsB:[122,76,118,95,116,113], kb:[110,146] }), // working arm down between the legs, free arm at side
       fp({ head:[110,62], spine:[[110,74],[110,108]], armsF:[98,75,88,94,94,110], kb:[96,122] }), // elbow driving out and down
       fp({ ...F_OVERHEAD_L }) // locked overhead
     ]
@@ -89,16 +89,16 @@ const EXERCISES = [
     cue: 'One arm locked up the whole time — eyes on the bell as you roll, brace and stand.',
     arrows: [{ from: [92, 152], ctrl: [60, 84], to: [116, 22] }],
     poses: [
-      // A: lying on the back — arm vertical with the bell locked overhead
+      // A: lying on the back — arm vertical with the bell locked overhead (full arm length)
       { head: [40, 152], spine: [[52, 154], [94, 156]],
-        armsF: [56, 153, 58, 120, 60, 84], armsB: [60, 157, 76, 159, 92, 158],
+        armsF: [56, 153, 57, 128, 59, 104], armsB: [60, 157, 76, 159, 92, 158],
         legsF: [94, 156, 112, 132, 112, 164], legsB: [94, 156, 106, 140, 108, 164],
-        kb: [61, 70] },
-      // B: half up — kneeling, torso ~45°, arm still vertical over the shoulder
-      { head: [103, 103], spine: [[96, 112], [78, 140]],
-        armsF: [94, 114, 96, 84, 98, 52], armsB: [92, 116, 86, 138, 80, 156],
-        legsF: [78, 140, 92, 152, 98, 164], legsB: [78, 140, 70, 158, 60, 164],
-        kb: [99, 40] },
+        kb: [60, 90] },
+      // B: half up — bridge position, supporting knee bent under the hip, arm still vertical over the shoulder
+      { head: [105, 100], spine: [[97, 108], [82, 134]],
+        armsF: [95, 110, 96, 85, 98, 60], armsB: [93, 112, 87, 132, 81, 150],
+        legsF: [82, 134, 106, 146, 107, 164], legsB: [82, 134, 70, 152, 58, 164],
+        kb: [99, 46] },
       // C: standing tall — arm still locked overhead
       { head: [99, 60], spine: [[97, 72], [90, 106]],
         armsF: [96, 74, 98, 50, 100, 28], armsB: [93, 76, 90, 98, 94, 118],
@@ -106,8 +106,8 @@ const EXERCISES = [
         kb: [101, 16] }
     ],
     posesFront: [
-      fp({ head:[110,98], spine:[[110,110],[108,134]], legsF:[102,134,88,152,84,164], legsB:[116,134,130,152,134,164], armsF:[106,112,107,82,109,50], armsB:[114,112,120,132,126,150], kb:[110,38] }), // rolled low — arm still up
-      fp({ head:[110,80], spine:[[110,92],[108,126]], legsF:[103,126,96,150,94,164], legsB:[117,126,124,150,126,164], armsF:[106,94,108,62,109,32], armsB:[114,94,122,114,128,136], kb:[110,20] }), // bracing up from the knees
+      fp({ head:[110,98], spine:[[110,110],[108,134]], legsF:[102,134,88,152,84,164], legsB:[116,134,130,152,134,164], armsF:[106,112,107,87,109,63], armsB:[114,112,120,132,126,150], kb:[110,49] }), // rolled low — arm still up
+      fp({ head:[110,80], spine:[[110,92],[108,126]], legsF:[103,126,96,150,94,164], legsB:[117,126,124,150,126,164], armsF:[106,94,107,69,109,45], armsB:[114,94,122,114,128,136], kb:[110,31] }), // bracing up from the knees
       fp({ ...F_OVERHEAD_L }) // standing tall, arm locked
     ]
   },
@@ -143,9 +143,9 @@ const EXERCISES = [
     cue: 'Swing it into the rack on your shoulder, then press straight overhead — one smooth line.',
     arrows: [{ from: [96, 150], ctrl: [70, 90], to: [110, 30] }],
     poses: [
-      // A: hinge bottom — bell between the legs
+      // A: hinge bottom — bell between the legs, free arm relaxed at the side (full length)
       { head: [121, 86], spine: [[112, 94], [80, 114]],
-        armsF: [110, 96, 108, 120, 105, 142], armsB: [107, 96, 98, 106, 92, 100],
+        armsF: [110, 96, 108, 120, 105, 142], armsB: [107, 96, 99, 114, 97, 132],
         legsF: [80, 114, 96, 138, 100, 164], legsB: [80, 114, 74, 138, 66, 164],
         kb: [95, 148] },
       // B: clean — bell racked on the front of the shoulder, elbow forward and down
@@ -195,7 +195,7 @@ const EXERCISES = [
 
   // ---------------- UPPER BODY ----------------
   {
-    id: 'overhead-carry', name: 'Overhead Carry', groups: ['upper', 'full'], level: 1,
+    id: 'overhead-carry', name: 'Overhead Carry', groups: ['upper', 'full'], level: 1, unilateral: true,
     cue: 'Lock the arm straight up and walk tall — keep the bell stacked over your shoulder.',
     arrows: [{ d: 'M 50 172 L 160 172', headAngle: 0 }],
     poses: [
@@ -272,7 +272,7 @@ const EXERCISES = [
     posesFront: [
       fp({ head:[106,96], spine:[[110,108],[112,140]], legsF:[105,140,96,152,97,164], legsB:[119,140,128,152,127,164], armsF:[103,110,97,128,107,124], armsB:[119,112,128,130,136,136], kb:[111,126] }), // leaning back — bell at the chest
       fp({ head:[106,96], spine:[[110,108],[112,140]], legsF:[105,140,96,152,97,164], legsB:[119,140,128,152,127,164], armsF:[103,110,99,90,103,72], armsB:[119,112,128,130,136,136], kb:[105,60] }), // mid-press
-      fp({ head:[106,96], spine:[[110,108],[112,140]], legsF:[105,140,96,152,97,164], legsB:[119,140,128,152,127,164], armsF:[103,110,103,76,104,44], armsB:[119,112,128,130,136,136], kb:[105,32] }) // lockout overhead
+      fp({ head:[106,96], spine:[[110,108],[112,140]], legsF:[105,140,96,152,97,164], legsB:[119,140,128,152,127,164], armsF:[103,110,102,88,104,66], armsB:[119,112,128,130,136,136], kb:[105,52] }) // lockout overhead
     ]
   },
   {
@@ -636,7 +636,7 @@ const EXERCISES = [
     ]
   },
   {
-    id: 'plank-pass', name: 'Plank Bell Pass', groups: ['core', 'upper'], level: 2, unilateral: true,
+    id: 'plank-pass', name: 'Plank Bell Pass', groups: ['core', 'upper'], level: 2,
     cue: 'Forearm plank — press the bell to lockout, then pass it hand-to-hand across your body.',
     arrows: [{ d: 'M 158 150 Q 168 96 194 156', headAngle: -20 }],
     poses: [
