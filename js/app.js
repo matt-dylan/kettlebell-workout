@@ -142,6 +142,7 @@ function animLoop(now) {
 
 // ---------------- audio (Web Audio bell) ----------------
 let actx = null;
+let pendingCue = null; // { nodes, fireWallMs } — the transition sound armed for the upcoming boundary
 function audio() {
   if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
   if (actx.state === 'suspended') actx.resume();
@@ -149,8 +150,10 @@ function audio() {
 }
 function bell(freq, when, dur, vol) {
   const ctx = audio(), t = ctx.currentTime + when;
+  const nodes = [];
   [[1, 1], [2.76, 0.38], [5.4, 0.16]].forEach(([m, g]) => {
     const o = ctx.createOscillator(), gn = ctx.createGain();
+    nodes.push(o);
     o.type = 'sine'; o.frequency.value = freq * m;
     gn.gain.setValueAtTime(0.0001, t);
     gn.gain.exponentialRampToValueAtTime(Math.max(0.001, vol * g), t + 0.012);
@@ -158,21 +161,51 @@ function bell(freq, when, dur, vol) {
     o.connect(gn).connect(ctx.destination);
     o.start(t); o.stop(t + dur + 0.05);
   });
+  return nodes;
 }
-function chime(kind) {
-  if (!settings.sound) return;
+// base = seconds from NOW to start the cue (0 = immediately; used to pre-schedule
+// transitions on Web Audio's clock so they land exactly on the wall-clock boundary)
+function chime(kind, base = 0) {
+  if (!settings.sound) return [];
+  let nodes = [];
   try {
-    if (kind === 'ready') bell(660, 0, 0.28, 0.3);
-    else if (kind === 'work') { bell(880, 0, 0.7, 0.5); bell(1174.7, 0.13, 0.9, 0.45); }
-    else if (kind === 'rest') bell(392, 0, 1.15, 0.5);
-    else if (kind === 'finish') bell(784, 0, 2.4, 0.6); // one long, clear "done" tone
-    else if (kind === 'stop') bell(330, 0, 0.5, 0.35);
-    else if (kind === 'count') bell(987.8, 0, 0.14, 0.42);   // final-3-seconds beep
+    if (kind === 'ready') nodes = bell(660, base, 0.28, 0.3);
+    else if (kind === 'work') nodes = bell(880, base, 0.7, 0.5).concat(bell(1174.7, base + 0.13, 0.9, 0.45));
+    else if (kind === 'rest') nodes = bell(392, base, 1.15, 0.5);
+    else if (kind === 'finish') { // bright high arpeggio C6 → E6 → G6 held — unmistakably "workout over"
+      nodes = bell(1046.5, base, 0.9, 0.5).concat(bell(1318.5, base + 0.32, 0.9, 0.5), bell(1567.98, base + 0.64, 1.8, 0.55));
+    }
+    else if (kind === 'stop') nodes = bell(330, base, 0.5, 0.35);
+    else if (kind === 'count') nodes = bell(987.8, base, 0.14, 0.42);   // final-3-seconds beep
   } catch (e) { /* audio unavailable */ }
   const dbg = window.__kb && window.__kb.log;
   if (dbg) dbg.push(kind);
+  return nodes;
 }
 function buzz(pattern) { if (settings.haptics && navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) {} } }
+
+// Pre-schedule the NEXT phase's sound sample-accurately: Web Audio's clock keeps running
+// even when setInterval is jittery/throttled, so the cue lands exactly on b.endsAt.
+function cancelNodes(nodes) { for (const n of nodes) { try { n.stop(0); } catch (e) {} } }
+function dropPendingCue(force) {
+  if (!pendingCue) return;
+  // Within ~60ms of its fire time it is already ringing — let it finish instead of clipping it.
+  if (force || pendingCue.fireWallMs - Date.now() > 60) cancelNodes(pendingCue.nodes);
+  pendingCue = null;
+}
+function scheduleTransition(b) {
+  dropPendingCue(false);
+  if (!settings.sound || !b.endsAt) return;
+  try {
+    const delay = Math.max(0, (b.endsAt - Date.now()) / 1000);
+    let kind;
+    if (W.idx + 1 >= W.blocks.length) kind = 'finish'; // last block ends → workout-over arpeggio at exactly T=0
+    else kind = W.blocks[W.idx + 1].type === 'work' ? 'work' : 'rest';
+    const nodes = chime(kind, delay);
+    if (nodes && nodes.length) pendingCue = { nodes, fireWallMs: b.endsAt };
+  } catch (e) { /* audio unavailable */ }
+}
+function cancelScheduled() { dropPendingCue(true); } // pause/stop: silence whatever is coming up next
 
 // ---------------- settings & history ----------------
 const LS_SET = 'kb.settings.v1', LS_HIST = 'kb.history.v1';
@@ -277,7 +310,7 @@ function buildSequence() {
 
 // ---------------- engine ----------------
 let W = null; // active workout state
-const tickTimer = setInterval(tick, 200);
+const tickTimer = setInterval(tick, 50); // tight tick — countdown + phase transitions stay within ~50ms of their wall-clock times
 
 function fmtClock(secs) {
   secs = Math.max(0, Math.round(secs));
@@ -305,6 +338,7 @@ function advanceTo(i, now) {
   b.endsAt = (now || Date.now()) + b.secs * 1000;
   W.lastBeep = 0; W.lastTick = null;
   onPhaseStart(b);
+  scheduleTransition(b); // the sound for THIS block's end is armed now, fires exactly on time
 }
 
 function nextWorkBlock(fromIdx) {
@@ -334,7 +368,7 @@ function onPhaseStart(b) {
     if (W.animEx) setAnimatedExercise(W.animEx);
     $('#ex-index').textContent = '';
   } else if (b.type === 'work') {
-    chime('work'); buzz([90]);
+    buzz([90]); // work ding pre-scheduled at the exact boundary
     phaseEl.textContent = b.emom ? 'EMOM' : 'WORK'; phaseEl.className = 'phase-banner work';
     cd.classList.remove('rest-mode');
     const totalWork = W.blocks.filter((x) => x.type === 'work').length;
@@ -347,7 +381,7 @@ function onPhaseStart(b) {
     setAnimatedExercise(W.animEx);
     document.title = `${b.secs}s · ${b.ex.name}${b.side ? ' (' + b.side + ')' : ''} — Kettlebell`;
   } else { // rest → show the NEXT exercise big so you can get ready
-    chime('rest'); buzz([45, 40, 45]);
+    buzz([45, 40, 45]); // rest bong pre-scheduled at the exact boundary
     phaseEl.textContent = 'REST'; phaseEl.className = 'phase-banner rest';
     cd.classList.add('rest-mode');
     const nw = W.blocks[W.idx + 1]; // the next block is always an upcoming work block
@@ -400,9 +434,9 @@ function tick() {
   const secs = Math.max(0, Math.ceil(remainMs / 1000));
   $('#big-countdown').textContent = b.type === 'ready' ? String(secs) : (secs < 60 ? String(secs) : fmtClock(secs));
 
-  // final-3-seconds beeps on every work block (each EMOM move slice too)
-  if (b.type === 'work') {
-    if (secs <= 3 && secs >= 1 && W.lastBeep !== secs) { W.lastBeep = secs; chime('count'); buzz([25]); }
+  // final-3-seconds beeps on work AND rest blocks alike (each EMOM move slice too) — so you hear the boundary coming from both sides
+  if ((b.type === 'work' || b.type === 'rest') && secs <= 3 && secs >= 1 && W.lastBeep !== secs) {
+    W.lastBeep = secs; chime('count'); buzz([25]);
   }
   // fallback draw when rAF is throttled (dimmed screen / background tab)
   if (!W.paused && Date.now() - lastDraw > 400) animLoop(performance.now());
@@ -430,12 +464,14 @@ function pauseToggle() {
     anim.t0 += Date.now() - (W.pauseAt || Date.now()); // resume pose animation in place
     W.paused = false;
     btn.textContent = 'Pause';
+    scheduleTransition(b); // re-arm the next cue against the new endsAt
   } else {
     const b = W.blocks[W.idx];
     W.frozenRemain = Math.max(0, b.endsAt - Date.now());
     W.pauseAt = Date.now();
     W.paused = true;
     btn.textContent = 'Resume';
+    cancelScheduled(); // silence anything armed while paused
   }
 }
 
@@ -451,7 +487,7 @@ function finishWorkout(completed) {
     completed: !!completed
   };
   history.unshift(entry); saveHistory();
-  chime(completed ? 'finish' : 'stop');
+  if (!completed) { cancelScheduled(); chime('stop'); } // completed → the high arpeggio already rang exactly at T=0 (pre-scheduled)
   W = null;
   document.title = 'Kettlebell Workouts';
   document.body.dataset.screen = '';
