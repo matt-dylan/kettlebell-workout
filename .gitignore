@@ -1,2 +1,23 @@
 tools/__pycache__/
 .DS_Store
+
+# agent/dev scratch files (not part of the app)
+.npm/
+Library/
+unsloth-tmp/
+httpd.log
+httpd.pid
+blocks.txt
+dbg.mjs
+dbg2.mjs
+dev-sheet.html
+diff_app.txt
+fixcommas.py
+fixcommas2.py
+meta.mjs
+patch2.py
+render.mjs
+render.mjs.bak
+verify-anim.mjs
+verify-debug.mjs
+verify-report.txt

@@ -38,16 +38,34 @@ function arrowHead(tipX, tipY, angleDeg) {
   const x2 = tipX + L * Math.cos(a + Math.PI + sp), y2 = tipY + L * Math.sin(a + Math.PI + sp);
   return `<polygon points="${tipX},${tipY} ${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}" fill="${CYAN}"/>`;
 }
-function arrowSvg(ar) {
-  if (ar.d) { // raw path; endpoint = last two numbers in the string
-    const m = ar.d.match(/(-?[0-9.]+)\s+(-?[0-9.]+)\s*$/);
-    const ex = +m[1], ey = +m[2];
-    return `<path class="kb-arrow" d="${ar.d}" fill="none" stroke="${CYAN}" stroke-width="3" stroke-dasharray="6 7" opacity=".85"/>` +
-      arrowHead(ex, ey, ar.headAngle != null ? ar.headAngle : -90);
+function pointOnArrow(ar, u) { // point at fraction u (0..1) along the arrow curve
+  if (ar.from) {
+    const fx = ar.from[0], fy = ar.from[1], cx = ar.ctrl[0], cy = ar.ctrl[1], tx = ar.to[0], ty = ar.to[1];
+    const v = 1 - u;
+    return [v * v * fx + 2 * v * u * cx + u * u * tx, v * v * fy + 2 * v * u * cy + u * u * ty];
   }
-  const ang = (Math.atan2(ar.to[1] - ar.ctrl[1], ar.to[0] - ar.ctrl[0]) * 180) / Math.PI;
-  return `<path class="kb-arrow" d="M ${ar.from[0]} ${ar.from[1]} Q ${ar.ctrl[0]} ${ar.ctrl[1]} ${ar.to[0]} ${ar.to[1]}" fill="none" stroke="${CYAN}" stroke-width="3" stroke-dasharray="6 7" opacity=".85"/>` +
-    arrowHead(ar.to[0], ar.to[1], ang);
+  const n = (ar.d || '').match(/-?[0-9.]+/g); // single-segment line path
+  if (n && n.length === 4) return [n[0] + (n[2] - n[0]) * u, n[1] + (n[3] - n[1]) * u];
+  return null;
+}
+// The dashes crawl along the curve AND an amber comet rides the path once per
+// rep cycle in phase with the motion, so the bell's route reads as movement
+// without the arrow looking like a static decoration.
+function arrowSvg(ar, now, repPhase) {
+  const flow = -((now / 34) % 13); // 13 = dash period (6 + 7); dashes advance along the path
+  const d = ar.d || `M ${ar.from[0]} ${ar.from[1]} Q ${ar.ctrl[0]} ${ar.ctrl[1]} ${ar.to[0]} ${ar.to[1]}`;
+  let head;
+  if (ar.d) {
+    const m = ar.d.match(/(-?[0-9.]+)\s+(-?[0-9.]+)\s*$/);
+    head = arrowHead(+m[1], +m[2], ar.headAngle != null ? ar.headAngle : -90);
+  } else {
+    const ang = (Math.atan2(ar.to[1] - ar.ctrl[1], ar.to[0] - ar.ctrl[0]) * 180) / Math.PI;
+    head = arrowHead(ar.to[0], ar.to[1], ang);
+  }
+  let s = `<path class="kb-arrow" d="${d}" fill="none" stroke="${CYAN}" stroke-width="3" stroke-dasharray="6 7" stroke-dashoffset="${flow}" opacity=".85"/>` + head;
+  const p = pointOnArrow(ar, repPhase == null ? 0 : repPhase);
+  if (p) s += `<circle cx="${p[0]}" cy="${p[1]}" r="5" fill="${AMBER}" opacity=".22"/><circle cx="${p[0]}" cy="${p[1]}" r="2.8" fill="${AMBER}" opacity=".95"/>`;
+  return s;
 }
 function kbSvg(x, y) {
   const hy = y - KB_R;
@@ -69,7 +87,12 @@ function personSvg(p) {
   asLimbs(p.armsF).forEach((a) => g.push(`<path d="${limb(a)}" stroke="${INK}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`));
   return g.join('');
 }
-function renderPose(frame, ex, front) {
+function shadowSvg(frame) { // grounding hint: grows and darkens as the hips sink toward the floor
+  const hipY = frame.spine[1][1];
+  const low = Math.max(0, Math.min(1, (hipY - 100) / 50)); // 0 standing … 1 deep/laid
+  return `<ellipse cx="${frame.spine[1][0]}" cy="${GROUND + 2}" rx="${30 + 7 * low}" ry="4.5 + 1.5 * low" fill="#000" opacity="${0.16 + 0.15 * low}"/>`;
+}
+function renderPose(frame, ex, front, mirror, now, repPhase, ghosts) {
   const parts = [];
   parts.push(`<line x1="12" y1="${GROUND + 3}" x2="208" y2="${GROUND + 3}" stroke="#334155" stroke-width="3" stroke-linecap="round"/>`);
   if (ex && !front && ex.box) { // side-view box (step-up platform from the side)
@@ -79,18 +102,25 @@ function renderPose(frame, ex, front) {
     const b = ex.boxFront;
     parts.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="5" fill="#263449" stroke="#3b4a68" stroke-width="2"/>`);
   }
-  if (!front) ((ex && ex.arrows) || []).forEach((ar) => parts.push(arrowSvg(ar))); // arrows are drawn in side-view coordinates
+  parts.push(shadowSvg(frame));
+  if (!front) // arrows are side-view coordinates only
+    ((ex && ex.arrows) || []).forEach((ar) => parts.push(arrowSvg(ar, now, repPhase)));
   parts.push(personSvg(frame));
+  if (frame.kb) // ghost bells lag the moving bell, tracing its path
+    (ghosts || []).forEach((g) => parts.push(`<circle cx="${g[0]}" cy="${g[1]}" r="${KB_R}" fill="${AMBER}" opacity="${g[2]}"/>`));
   if (frame.kb) parts.push(kbSvg(frame.kb[0], frame.kb[1]));
-  return `<svg viewBox="0 0 220 180" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg>`;
+  const body = parts.join('');
+  // LEFT-side reps mirror the side view (base side pose shows the right side)
+  const out = mirror ? `<g transform="translate(220 0) scale(-1 1)">${body}</g>` : body;
+  return `<svg viewBox="0 0 220 180" role="img" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">${out}</svg>`;
 }
 
 // Side + front views side by side (falls back to a single side figure when an
 // exercise has no posesFront). Labels make it obvious which angle is which.
-function renderPair(sideFrame, frontFrame, ex) {
-  if (!frontFrame) return renderPose(sideFrame, ex);
+function renderPair(sideFrame, frontFrame, ex, mirror, now, repPhase, sideGhosts, frontGhosts) {
+  if (!frontFrame) return renderPose(sideFrame, ex, false, mirror, now, repPhase, sideGhosts);
   const col = (svg, label) => `<div class="art-col">${svg}<span class="art-label">${label}</span></div>`;
-  return `<div class="art-pair">${col(renderPose(sideFrame, ex), 'side')}${col(renderPose(frontFrame, ex, true), 'front')}</div>`;
+  return `<div class="art-pair">${col(renderPose(sideFrame, ex, false, mirror, now, repPhase, sideGhosts), 'side')}${col(renderPose(frontFrame, ex, true, false, now, null, frontGhosts), 'front')}</div>`;
 }
 
 // ---------------- pose animation (keyframe morphing) ----------------
@@ -113,20 +143,47 @@ function lerpPose(A, B, u) {
     kb: (A.kb && B.kb) ? L(A.kb, B.kb) : null
   };
 }
-const smooth = (t) => t * t * (3 - 2 * t); // ease in/out at each keyframe
-function frameAt(frames, now) {
+// One fluid motion, no pauses: t sweeps the whole path A -> ... -> last -> A
+// at constant velocity (ping-pong). No easing, no holds anywhere — the bell
+// flows through every keyframe at the same speed and only reverses direction
+// at the two ends of the path. At ~30fps the reversal lands in a single frame,
+// so the motion keeps flowing through the turnaround instead of hanging or
+// growing a dwell. Per-exercise `seg` in data.js = ms per keyframe interval.
+function pathU(frames, now, ex) {
+  const n = frames.length;
+  if (n < 2) return 0;
+  const seg = (ex && ex.seg) || 850;
+  const cyc = (n - 1) * 2 * seg;
+  const t = ((now - anim.t0) % cyc + cyc) % cyc;
+  let p = t / seg;                      // linear path position, 0 .. 2(n-1)
+  if (p > n - 1) p = 2 * (n - 1) - p;   // ping-pong: A ... last -> A
+  return p;                             // no easing — uniform speed, no holds
+}
+function frameAt(frames, now, ex) {
   const n = frames.length;
   if (n < 2) return frames[0];
-  const segDur = 850, seqLen = (n - 1) * 2; // ping-pong: A->B->(C->)...->A
-  const t = ((now - anim.t0) % (seqLen * segDur));
-  const seg = Math.floor(t / segDur);
-  const w = smooth((t - seg * segDur) / segDur);
-  const f = (s) => (s <= n - 1 ? s : 2 * (n - 1) - s);
-  return lerpPose(frames[f(seg)], frames[f(seg + 1)], w);
+  const s = pathU(frames, now, ex);     // fractional keyframe index 0..n-1
+  const i = Math.min(n - 2, Math.floor(s));
+  return lerpPose(frames[i], frames[i + 1], s - i);
 }
-const anim = { ex: null, t0: 0 };
-function setAnimatedExercise(ex) {
-  if (anim.ex !== ex) { anim.ex = ex; anim.t0 = performance.now(); }
+// Fractional keyframe position (0..n-1, ping-ponged) in 0..1 — used to place
+// the arrow comet in the same phase as the motion.
+function frameU(frames, now, ex) { return pathU(frames, now, ex) / (frames.length - 1); }
+const anim = { ex: null, side: null, t0: 0 };
+function setAnimatedExercise(ex, side) {
+  if (anim.ex !== ex || anim.side !== side) { anim.ex = ex; anim.side = side; anim.t0 = performance.now(); }
+}
+// Two short look-backs of the same motion: while the bell moves they render as
+// fading ghosts behind it (its path visible); on a held frame they coincide
+// with the bell and are skipped, so static moves stay clean.
+function kbGhosts(frames, cur, now, ex) {
+  const out = [];
+  if (!cur.kb) return out;
+  [[100, 0.15], [200, 0.08]].forEach(([dt, o]) => {
+    const g = frameAt(frames, now - dt, ex);
+    if (g.kb && Math.abs(g.kb[0] - cur.kb[0]) + Math.abs(g.kb[1] - cur.kb[1]) > 4) out.push([g.kb[0], g.kb[1], o]);
+  });
+  return out;
 }
 let lastDraw = 0;
 function animLoop(now) {
@@ -136,8 +193,11 @@ function animLoop(now) {
   if (!ex || !ex.poses.length) return;
   if (now - lastDraw < 33) return; // ~30fps cap
   lastDraw = now;
-  const sf = frameAt(ex.poses, now);
-  $('#exercise-art').innerHTML = renderPair(sf, ex.posesFront ? frameAt(ex.posesFront, now) : null, ex);
+  const sf = frameAt(ex.poses, now, ex);
+  const ff = ex.posesFront ? frameAt(ex.posesFront, now, ex) : null;
+  const mirror = anim.side === 'L'; // base side pose shows the RIGHT side
+  $('#exercise-art').innerHTML = renderPair(sf, ff, ex, mirror, now, frameU(ex.poses, now, ex),
+    kbGhosts(ex.poses, sf, now, ex), ff ? kbGhosts(ex.posesFront, ff, now, ex) : []);
 }
 
 // ---------------- audio (Web Audio bell) ----------------
@@ -365,7 +425,7 @@ function onPhaseStart(b) {
     $('#ex-cue').textContent = 'Grab your kettlebell and get into position…';
     setSideDisplay(first && first.side);
     W.animEx = first ? first.ex : null;
-    if (W.animEx) setAnimatedExercise(W.animEx);
+    if (W.animEx) setAnimatedExercise(first.ex, first.side);
     $('#ex-index').textContent = '';
   } else if (b.type === 'work') {
     buzz([90]); // work ding pre-scheduled at the exact boundary
@@ -378,7 +438,7 @@ function onPhaseStart(b) {
     $('#ex-cue').textContent = b.ex.cue;
     setSideDisplay(b.side);
     W.animEx = b.ex;
-    setAnimatedExercise(W.animEx);
+    setAnimatedExercise(b.ex, b.side);
     document.title = `${b.secs}s · ${b.ex.name}${b.side ? ' (' + b.side + ')' : ''} — Kettlebell`;
   } else { // rest → show the NEXT exercise big so you can get ready
     buzz([45, 40, 45]); // rest bong pre-scheduled at the exact boundary
@@ -397,7 +457,7 @@ function onPhaseStart(b) {
       $('#ex-cue').textContent = nw.ex.cue;
       setSideDisplay(nw.side);
       W.animEx = nw.ex;
-      setAnimatedExercise(W.animEx);
+      setAnimatedExercise(nw.ex, nw.side);
     } else {
       $('#ex-name').textContent = 'Rest';
       $('#ex-cue').textContent = 'Breathe. You’re almost done.';
