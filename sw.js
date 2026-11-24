@@ -1,5 +1,5 @@
 /* Kettlebell Workouts — service worker (offline-first app shell) */
-const CACHE = 'kb-cache-v7';
+const CACHE = 'kb-cache-v9';
 const SHELL = [
   './',
   './index.html',
@@ -9,7 +9,8 @@ const SHELL = [
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/apple-touch-icon.png',
+  './icons/icon-maskable-512.png'
 ];
 
 self.addEventListener('install', (e) => {
